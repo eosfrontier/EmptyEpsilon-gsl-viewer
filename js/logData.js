@@ -2,8 +2,8 @@
 class LogData {
   constructor (text) {
     // Delineate text by CRLF line endings.
-    const lines = text.match(/^.*(?<id>[\n\r]+|$)/ugm);
-
+    // Split by any common newline format to handle cross-platform files.
+    const lines = text.split(/\r\n?|\n/);
     this.entries = [];
 
     // Parse each line if it's valid, and throw an error if it's not.
