@@ -21,6 +21,16 @@
     <script src="js/walker.js"></script>
   </head>
 
+  <?php
+    $default_log_file = 'default_logfile.txt';
+    if (file_exists($default_log_file)) {
+        $log_content = file_get_contents($default_log_file);
+        // Use json_encode to safely escape the string for JavaScript
+        $escaped_log_content = json_encode($log_content);
+        echo "<script>var defaultLogData = $escaped_log_content;</script>";
+    }
+  ?>
+
   <body>
     <!-- Canvases; bg for grid and terrain, fg for objects. Hitbox is drawn in-script. -->
     <canvas id="canvas-bg"></canvas>

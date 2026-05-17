@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>EOS SYSTEM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #1a1c1e;
+    --panel: #f4f2ee;
+    --panel-border: #d8d4cc;
+    --panel-inner: #eae7e0;
+    --accent: #2a6dd9;
+    --accent-light: #dce8fb;
+    --text: #3a3830;
+    --text-dim: #7a7568;
+    --text-on-dark: #e8e4dc;
+    --red: #c0392b;
+    --red-light: #fde8e6;
+    --green: #1d7a4a;
+    --green-light: #e0f4ea;
+    --grey: #5a6472;
+    --grey-light: #e8eaed;
+    --hostile: #8b1a1a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* HEADER */
+  #header {
+    flex-shrink: 0;
+    height: 48px;
+    background: #23262b;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    z-index: 100;
+  }
+  #header h1 {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-on-dark);
+    letter-spacing: 2px;
+    white-space: nowrap;
+    opacity: 0.9;
+  }
+  #header .sep { flex: 1; }
+  #clear-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: #e87070;
+    background: transparent;
+    border: 1px solid #6b3030;
+    padding: 5px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  #clear-btn:hover { background: rgba(232,112,112,0.1); border-color: #e87070; }
+
+  /* MAIN AREA */
+  #main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* MAP AREA */
+  #map-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  #map-viewport {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  #base-img {
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  #draw-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+  }
+
+  #overlay-svg {
+    position: absolute;
+    top: 0; left: 0;
+    overflow: visible;
+  }
+
+  /* SIDEBAR */
+  #sidebar {
+    width: 210px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-left: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    z-index: 10;
+  }
+
+  .tool-section {
+    padding: 12px 12px 10px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .tool-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: left;
+    margin-bottom: 2px;
+    transition: all 0.12s;
+    user-select: none;
+  }
+  .tool-btn:hover { background: var(--panel-inner); color: var(--text); }
+  .tool-btn.active {
+    background: var(--accent-light);
+    border-color: #a8c4f0;
+    color: var(--accent);
+  }
+  .tool-btn .icon { font-size: 15px; width: 20px; text-align: center; }
+
+  /* Draw colors */
+  .color-row {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    padding: 2px 0;
+  }
+  .color-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .color-swatch:hover { transform: scale(1.1); }
+  .color-swatch.active { border-color: var(--text); transform: scale(1.12); box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
+
+  /* Brush size */
+  .brush-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .brush-row label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .brush-row input[type=range] {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+  #brush-size-val { font-size: 12px; font-weight: 600; color: var(--accent); width: 18px; }
+
+  /* Ship name list */
+  .ship-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ship-name-btn {
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: left;
+    transition: all 0.1s;
+    user-select: none;
+  }
+  .ship-name-btn:hover { background: var(--panel-inner); }
+  .ship-name-btn.selected { border-color: #a8c4f0; color: var(--accent); background: var(--accent-light); }
+  .ship-name-btn.hostile { color: var(--hostile); }
+  .ship-name-btn.hostile:hover { background: var(--red-light); }
+  .ship-name-btn.hostile.selected { border-color: #e0a0a0; background: var(--red-light); color: var(--hostile); }
+
+  /* Ship color row */
+  .ship-color-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+    margin-bottom: 2px;
+  }
+  .ship-color-opt {
+    flex: 1;
+    padding: 7px 0;
+    border: 2px solid var(--panel-border);
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.12s;
+    user-select: none;
+    background: var(--panel-inner);
+  }
+  .ship-color-opt.red  { color: var(--red); }
+  .ship-color-opt.green{ color: var(--green); }
+  .ship-color-opt.grey { color: var(--grey); }
+  .ship-color-opt.red.active  { border-color: var(--red);   background: var(--red-light); }
+  .ship-color-opt.green.active{ border-color: var(--green);  background: var(--green-light); }
+  .ship-color-opt.grey.active { border-color: var(--grey);   background: var(--grey-light); }
+
+  /* Zoom controls */
+  .zoom-row {
+    display: flex;
+    gap: 6px;
+  }
+  .zoom-btn {
+    flex: 1;
+    padding: 8px;
+    background: var(--panel-inner);
+    border: 1px solid var(--panel-border);
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    text-align: center;
+    transition: all 0.1s;
+    user-select: none;
+  }
+  .zoom-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  #zoom-label {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+
+  /* Undo */
+  #undo-btn {
+    width: 100%;
+    padding: 8px;
+    background: var(--panel-inner);
+    border: 1px solid var(--panel-border);
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: center;
+    transition: all 0.1s;
+    user-select: none;
+    margin-top: 6px;
+  }
+  #undo-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+  /* Ship tooltip / label on map */
+  .ship-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    pointer-events: none;
+  }
+
+  /* Modal for ship name selection (mobile fallback if needed) */
+  #name-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  #name-modal.open { display: flex; }
+  #name-modal-inner {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 20px;
+    width: 290px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #name-modal h2 {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+  .modal-ship-btn {
+    display: block;
+    width: 100%;
+    padding: 11px 14px;
+    margin-bottom: 4px;
+    background: var(--panel-inner);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: left;
+    transition: all 0.1s;
+  }
+  .modal-ship-btn:hover, .modal-ship-btn:active { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+  .modal-ship-btn.hostile { color: var(--hostile); }
+  .modal-ship-btn.hostile:hover { border-color: var(--red); background: var(--red-light); color: var(--hostile); }
+  #modal-cancel {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    transition: all 0.1s;
+  }
+  #modal-cancel:hover { border-color: var(--text-dim); color: var(--text); }
+
+  /* Context menu for placed icons */
+  #ctx-menu {
+    display: none;
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    z-index: 500;
+    min-width: 130px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+  #ctx-menu.open { display: block; }
+  .ctx-item {
+    padding: 11px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text);
+    border-bottom: 1px solid var(--panel-border);
+    user-select: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .ctx-item:last-child { border-bottom: none; }
+  .ctx-item:hover { background: var(--panel-inner); }
+  .ctx-item.danger { color: var(--red); }
+  .ctx-item.danger:hover { background: var(--red-light); }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>EOS SYSTEM // TACTICAL OVERLAY</h1>
+  <div class="sep"></div>
+  <button id="clear-btn">CLEAR ALL</button>
+</div>
+
+<div id="main">
+  <div id="map-container">
+    <div id="map-viewport">
+      <img id="base-img" src="Eos_EE_Map.png" alt="EOS Map" draggable="false">
+      <canvas id="draw-canvas"></canvas>
+      <svg id="overlay-svg"></svg>
+    </div>
+  </div>
+
+  <div id="sidebar">
+
+    <!-- ZOOM -->
+    <div class="tool-section">
+      <div class="section-label">Zoom</div>
+      <div class="zoom-row">
+        <button class="zoom-btn" id="zoom-out">−</button>
+        <button class="zoom-btn" id="zoom-fit">⊡</button>
+        <button class="zoom-btn" id="zoom-in">+</button>
+      </div>
+      <div id="zoom-label">100%</div>
+    </div>
+
+    <!-- TOOLS -->
+    <div class="tool-section">
+      <div class="section-label">Tool</div>
+      <button class="tool-btn active" data-tool="draw" id="tool-draw">
+        <span class="icon">✏️</span> Draw
+      </button>
+      <button class="tool-btn" data-tool="pan" id="tool-pan">
+        <span class="icon">✋</span> Pan
+      </button>
+      <button class="tool-btn" data-tool="ship" id="tool-ship">
+        <span class="icon">▲</span> Ship
+      </button>
+      <button class="tool-btn" data-tool="marker" id="tool-marker">
+        <span class="icon">◆</span> Marker
+      </button>
+      <button id="undo-btn">↩ Undo</button>
+    </div>
+
+    <!-- DRAW OPTIONS -->
+    <div class="tool-section" id="draw-options">
+      <div class="section-label">Draw Color</div>
+      <div class="color-row">
+        <div class="color-swatch active" data-color="#2563eb" style="background:#2563eb"></div>
+        <div class="color-swatch" data-color="#dc2626" style="background:#dc2626"></div>
+        <div class="color-swatch" data-color="#16a34a" style="background:#16a34a"></div>
+        <div class="color-swatch" data-color="#ca8a04" style="background:#ca8a04"></div>
+        <div class="color-swatch" data-color="#ea580c" style="background:#ea580c"></div>
+        <div class="color-swatch" data-color="#9333ea" style="background:#9333ea"></div>
+      </div>
+      <div class="brush-row">
+        <label>Size</label>
+        <input type="range" id="brush-size" min="2" max="20" value="4">
+        <span id="brush-size-val">4</span>
+      </div>
+    </div>
+
+    <!-- SHIP OPTIONS -->
+    <div class="tool-section" id="ship-options" style="display:none">
+      <div class="section-label">Ship Color</div>
+      <div class="ship-color-row">
+        <div class="ship-color-opt red active" data-ship-color="red">RED</div>
+        <div class="ship-color-opt green" data-ship-color="green">GRN</div>
+        <div class="ship-color-opt grey" data-ship-color="grey">GRY</div>
+      </div>
+      <div class="section-label" style="margin-top:10px">Ship Name</div>
+      <div class="ship-list">
+        <button class="ship-name-btn selected" data-name="DSV Madayag">DSV Madayag</button>
+        <button class="ship-name-btn" data-name="DSV Stargazer">DSV Stargazer</button>
+        <button class="ship-name-btn" data-name="ARN Vigilus">ARN Vigilus</button>
+        <button class="ship-name-btn" data-name="ARN Invictus">ARN Invictus</button>
+        <button class="ship-name-btn" data-name="DAG Ganbare">DAG Ganbare</button>
+        <button class="ship-name-btn" data-name="ZIA Tempest">ZIA Tempest</button>
+        <button class="ship-name-btn" data-name="VIA Gust">VIA Gust</button>
+        <button class="ship-name-btn" data-name="SON Kukri">SON Kukri</button>
+        <button class="ship-name-btn" data-name="SON Scimitar">SON Scimitar</button>
+        <button class="ship-name-btn hostile" data-name="Hostile">⚠ Hostile</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Name picker modal (for touchscreen placement) -->
+<div id="name-modal">
+  <div id="name-modal-inner">
+    <h2>SELECT VESSEL</h2>
+    <div id="modal-ship-list"></div>
+    <button id="modal-cancel">Cancel</button>
+  </div>
+</div>
+
+<!-- Context menu -->
+<div id="ctx-menu">
+  <div class="ctx-item" id="ctx-delete">🗑 Delete</div>
+</div>
+
+<script>
+const IMG_SRC = 'Eos_EE_Map.png';
+
+// State
+let scale = 1;
+let panX = 0, panY = 0;
+let tool = 'draw';
+let drawColor = '#2563eb';
+let brushSize = 4;
+let shipColor = 'red';
+let shipName = 'DSV Madayag';
+let isDrawing = false;
+let lastPt = null;
+let isPanning = false;
+let panStart = null;
+let panStartPos = null;
+
+// Icons and strokes for undo
+let strokes = []; // each: { type:'stroke', imageData }
+let icons = [];   // each: { id, type:'ship'|'marker', x, y, color, name, el }
+let iconIdCounter = 0;
+
+// Pending ship placement (touch: pick name then place)
+let pendingPlacePos = null;
+
+const mapContainer = document.getElementById('map-container');
+const viewport = document.getElementById('map-viewport');
+const baseImg = document.getElementById('base-img');
+const drawCanvas = document.getElementById('draw-canvas');
+const ctx = drawCanvas.getContext('2d');
+const svg = document.getElementById('overlay-svg');
+const nameModal = document.getElementById('name-modal');
+const ctxMenu = document.getElementById('ctx-menu');
+
+let imgW = 0, imgH = 0;
+
+baseImg.onload = () => {
+  imgW = baseImg.naturalWidth;
+  imgH = baseImg.naturalHeight;
+  drawCanvas.width = imgW;
+  drawCanvas.height = imgH;
+  svg.setAttribute('width', imgW);
+  svg.setAttribute('height', imgH);
+  fitToScreen();
+};
+if (baseImg.complete) baseImg.onload();
+
+function fitToScreen() {
+  const cw = mapContainer.clientWidth;
+  const ch = mapContainer.clientHeight;
+  const scaleX = cw / imgW;
+  const scaleY = ch / imgH;
+  scale = Math.min(scaleX, scaleY) * 0.95;
+  panX = (cw - imgW * scale) / 2;
+  panY = (ch - imgH * scale) / 2;
+  applyTransform();
+}
+
+function applyTransform() {
+  viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  document.getElementById('zoom-label').textContent = Math.round(scale * 100) + '%';
+}
+
+// Zoom buttons
+document.getElementById('zoom-in').addEventListener('click', () => { zoomBy(1.25); });
+document.getElementById('zoom-out').addEventListener('click', () => { zoomBy(0.8); });
+document.getElementById('zoom-fit').addEventListener('click', fitToScreen);
+
+function zoomBy(factor) {
+  const cw = mapContainer.clientWidth;
+  const ch = mapContainer.clientHeight;
+  const cx = cw / 2, cy = ch / 2;
+  const newScale = Math.min(Math.max(scale * factor, 0.1), 8);
+  panX = cx - (cx - panX) * (newScale / scale);
+  panY = cy - (cy - panY) * (newScale / scale);
+  scale = newScale;
+  applyTransform();
+}
+
+// Pinch zoom
+let lastPinchDist = null;
+let lastPinchMid = null;
+
+function getTouchDist(t) {
+  const dx = t[0].clientX - t[1].clientX;
+  const dy = t[0].clientY - t[1].clientY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+function getTouchMid(t) {
+  return { x: (t[0].clientX + t[1].clientX)/2, y: (t[0].clientY + t[1].clientY)/2 };
+}
+
+// Mouse wheel zoom
+mapContainer.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = mapContainer.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  const newScale = Math.min(Math.max(scale * factor, 0.1), 8);
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+  applyTransform();
+}, { passive: false });
+
+// Tool buttons
+document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    tool = btn.dataset.tool;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('draw-options').style.display = tool === 'draw' ? '' : 'none';
+    document.getElementById('ship-options').style.display = tool === 'ship' ? '' : 'none';
+    mapContainer.style.cursor = tool === 'pan' ? 'grab' : 'crosshair';
+  });
+});
+
+// Color swatches
+document.querySelectorAll('.color-swatch').forEach(s => {
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('active'));
+    s.classList.add('active');
+    drawColor = s.dataset.color;
+  });
+});
+
+// Brush size
+const brushInput = document.getElementById('brush-size');
+const brushVal = document.getElementById('brush-size-val');
+brushInput.addEventListener('input', () => {
+  brushSize = parseInt(brushInput.value);
+  brushVal.textContent = brushSize;
+});
+
+// Ship color
+document.querySelectorAll('.ship-color-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.ship-color-opt').forEach(x => x.classList.remove('active'));
+    opt.classList.add('active');
+    shipColor = opt.dataset.shipColor;
+  });
+});
+
+// Ship name buttons
+document.querySelectorAll('.ship-name-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ship-name-btn').forEach(x => x.classList.remove('selected'));
+    btn.classList.add('selected');
+    shipName = btn.dataset.name;
+  });
+});
+
+// Convert screen coords to image coords
+function screenToImage(sx, sy) {
+  const rect = mapContainer.getBoundingClientRect();
+  return {
+    x: (sx - rect.left - panX) / scale,
+    y: (sy - rect.top - panY) / scale
+  };
+}
+
+// DRAWING
+function startDraw(pt) {
+  isDrawing = true;
+  ctx.beginPath();
+  ctx.strokeStyle = drawColor;
+  ctx.lineWidth = brushSize;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.moveTo(pt.x, pt.y);
+  lastPt = pt;
+}
+function continueDraw(pt) {
+  if (!isDrawing) return;
+  ctx.lineTo(pt.x, pt.y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(pt.x, pt.y);
+  lastPt = pt;
+}
+function endDraw() {
+  if (!isDrawing) return;
+  isDrawing = false;
+  ctx.beginPath();
+  // Save stroke as imageData for undo
+  strokes.push({ type: 'stroke', imageData: ctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height) });
+}
+
+// SHIP / MARKER PLACEMENT
+const SHIP_COLORS = {
+  red:   '#dc2626',
+  green: '#16a34a',
+  grey:  '#5a6472'
+};
+
+function placeIcon(imgX, imgY, type, name, color) {
+  const id = ++iconIdCounter;
+  const isHostile = name === 'Hostile';
+  const colHex = type === 'marker' ? '#ca8a04' : (SHIP_COLORS[color] || '#dc2626');
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.setAttribute('data-id', id);
+  g.style.cursor = 'pointer';
+
+  if (type === 'ship') {
+    // Triangle
+    const size = 14;
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    const pts = `${imgX},${imgY - size} ${imgX - size*0.7},${imgY + size*0.5} ${imgX + size*0.7},${imgY + size*0.5}`;
+    poly.setAttribute('points', pts);
+    poly.setAttribute('fill', colHex);
+    poly.setAttribute('stroke', '#000');
+    poly.setAttribute('stroke-width', '1.5');
+    g.appendChild(poly);
+
+    if (name) {
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', imgX);
+      txt.setAttribute('y', imgY + size + 13);
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('font-family', 'DM Mono, monospace');
+      txt.setAttribute('font-size', '12');
+      txt.setAttribute('fill', isHostile ? '#8b1a1a' : colHex);
+      txt.setAttribute('stroke', '#000');
+      txt.setAttribute('stroke-width', '3');
+      txt.setAttribute('paint-order', 'stroke');
+      txt.textContent = name;
+      g.appendChild(txt);
+    }
+  } else {
+    // Diamond marker
+    const size = 10;
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    const pts = `${imgX},${imgY-size} ${imgX+size},${imgY} ${imgX},${imgY+size} ${imgX-size},${imgY}`;
+    poly.setAttribute('points', pts);
+    poly.setAttribute('fill', colHex);
+    poly.setAttribute('fill-opacity', '0.7');
+    poly.setAttribute('stroke', colHex);
+    poly.setAttribute('stroke-width', '1.5');
+    g.appendChild(poly);
+
+    // Cross
+    const line1 = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line1.setAttribute('x1', imgX - size*0.5); line1.setAttribute('y1', imgY);
+    line1.setAttribute('x2', imgX + size*0.5); line1.setAttribute('y2', imgY);
+    line1.setAttribute('stroke', '#000'); line1.setAttribute('stroke-width', '1.5');
+    g.appendChild(line1);
+    const line2 = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line2.setAttribute('x1', imgX); line2.setAttribute('y1', imgY - size*0.5);
+    line2.setAttribute('x2', imgX); line2.setAttribute('y2', imgY + size*0.5);
+    line2.setAttribute('stroke', '#000'); line2.setAttribute('stroke-width', '1.5');
+    g.appendChild(line2);
+  }
+
+  // Long-press / right-click to delete
+  let pressTimer = null;
+  const showCtx = (clientX, clientY) => {
+    ctxMenu.style.left = clientX + 'px';
+    ctxMenu.style.top = clientY + 'px';
+    ctxMenu.classList.add('open');
+    document.getElementById('ctx-delete').onclick = () => {
+      removeIcon(id);
+      ctxMenu.classList.remove('open');
+    };
+  };
+
+  g.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showCtx(e.clientX, e.clientY);
+  });
+
+  g.addEventListener('touchstart', (e) => {
+    pressTimer = setTimeout(() => {
+      const t = e.touches[0];
+      showCtx(t.clientX, t.clientY);
+    }, 600);
+  }, { passive: true });
+  g.addEventListener('touchend', () => clearTimeout(pressTimer), { passive: true });
+  g.addEventListener('touchmove', () => clearTimeout(pressTimer), { passive: true });
+
+  svg.appendChild(g);
+
+  const iconObj = { id, type, x: imgX, y: imgY, color, name, el: g };
+  icons.push(iconObj);
+  return iconObj;
+}
+
+function removeIcon(id) {
+  const idx = icons.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  icons[idx].el.remove();
+  icons.splice(idx, 1);
+}
+
+// Undo
+document.getElementById('undo-btn').addEventListener('click', () => {
+  // Undo last stroke or last icon
+  // Figure out which came last
+  const lastIcon = icons[icons.length - 1];
+  const lastStroke = strokes[strokes.length - 1];
+
+  if (!lastIcon && !lastStroke) return;
+
+  // If only one type exists, undo that
+  // Since we don't have timestamps easily, undo icons first if any
+  if (lastIcon) {
+    removeIcon(lastIcon.id);
+  } else if (lastStroke) {
+    strokes.pop();
+    if (strokes.length > 0) {
+      ctx.putImageData(strokes[strokes.length - 1].imageData, 0, 0);
+    } else {
+      ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    }
+  }
+});
+
+// Clear all
+document.getElementById('clear-btn').addEventListener('click', () => {
+  if (!confirm('Clear all annotations?')) return;
+  ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  strokes = [];
+  [...icons].forEach(i => i.el.remove());
+  icons = [];
+});
+
+// Close ctx menu on tap elsewhere
+document.addEventListener('pointerdown', (e) => {
+  if (!ctxMenu.contains(e.target)) ctxMenu.classList.remove('open');
+});
+
+// ---- POINTER EVENTS ----
+
+let activeTouches = [];
+
+mapContainer.addEventListener('pointerdown', onPointerDown);
+mapContainer.addEventListener('pointermove', onPointerMove);
+mapContainer.addEventListener('pointerup', onPointerUp);
+mapContainer.addEventListener('pointercancel', onPointerUp);
+
+// Track for pinch
+const activePointers = {};
+
+function onPointerDown(e) {
+  e.preventDefault();
+  activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  const pointerCount = Object.keys(activePointers).length;
+
+  if (pointerCount === 2) {
+    // Pinch — stop drawing/panning
+    isDrawing = false;
+    isPanning = false;
+    const pts = Object.values(activePointers);
+    lastPinchDist = getTouchDistFromPts(pts);
+    lastPinchMid = getMidFromPts(pts);
+    return;
+  }
+
+  if (tool === 'pan' || (pointerCount === 1 && e.button === 1)) {
+    isPanning = true;
+    panStart = { x: e.clientX, y: e.clientY };
+    panStartPos = { x: panX, y: panY };
+    mapContainer.style.cursor = 'grabbing';
+    return;
+  }
+
+  const imgPt = screenToImage(e.clientX, e.clientY);
+
+  if (tool === 'draw') {
+    // Save current state before stroke
+    strokes.push({ type: 'stroke', imageData: ctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height) });
+    startDraw(imgPt);
+  } else if (tool === 'ship') {
+    placeIcon(imgPt.x, imgPt.y, 'ship', shipName, shipColor);
+  } else if (tool === 'marker') {
+    placeIcon(imgPt.x, imgPt.y, 'marker', '', '');
+  }
+}
+
+function onPointerMove(e) {
+  e.preventDefault();
+  activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  const pointerCount = Object.keys(activePointers).length;
+
+  if (pointerCount === 2) {
+    const pts = Object.values(activePointers);
+    const dist = getTouchDistFromPts(pts);
+    const mid = getMidFromPts(pts);
+    if (lastPinchDist !== null) {
+      const factor = dist / lastPinchDist;
+      const rect = mapContainer.getBoundingClientRect();
+      const mx = mid.x - rect.left;
+      const my = mid.y - rect.top;
+      const newScale = Math.min(Math.max(scale * factor, 0.1), 8);
+      panX = mx - (mx - panX) * (newScale / scale);
+      panY = my - (my - panY) * (newScale / scale);
+      scale = newScale;
+      applyTransform();
+    }
+    lastPinchDist = dist;
+    lastPinchMid = mid;
+    return;
+  }
+
+  if (isPanning) {
+    panX = panStartPos.x + (e.clientX - panStart.x);
+    panY = panStartPos.y + (e.clientY - panStart.y);
+    applyTransform();
+    return;
+  }
+
+  if (tool === 'draw' && isDrawing) {
+    const imgPt = screenToImage(e.clientX, e.clientY);
+    continueDraw(imgPt);
+  }
+}
+
+function onPointerUp(e) {
+  delete activePointers[e.pointerId];
+  const pointerCount = Object.keys(activePointers).length;
+
+  if (pointerCount < 2) {
+    lastPinchDist = null;
+    lastPinchMid = null;
+  }
+
+  if (isPanning) {
+    isPanning = false;
+    mapContainer.style.cursor = tool === 'pan' ? 'grab' : 'crosshair';
+  }
+
+  if (tool === 'draw') endDraw();
+}
+
+function getTouchDistFromPts(pts) {
+  const dx = pts[0].x - pts[1].x;
+  const dy = pts[0].y - pts[1].y;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+function getMidFromPts(pts) {
+  return { x: (pts[0].x + pts[1].x)/2, y: (pts[0].y + pts[1].y)/2 };
+}
+
+// Modal cancel
+document.getElementById('modal-cancel').addEventListener('click', () => {
+  nameModal.classList.remove('open');
+  pendingPlacePos = null;
+});
+</script>
+</body>
+</html>

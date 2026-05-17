@@ -49,6 +49,11 @@ $().ready(function () {
     // Do not initiate playback on ready by default.
     isAutoplaying = false;
 
+  // If a default log file was loaded by PHP, use it.
+  if (typeof defaultLogData !== "undefined" && defaultLogData) {
+    loadLog(defaultLogData, canvas);
+  }
+
   // Loading screen events
   // =====================
 
