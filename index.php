@@ -22,12 +22,12 @@
   </head>
 
   <?php
-    $default_log_file = 'default_logfile.txt';
+    $default_log_file = __DIR__ . '/default_logfile.txt';
     if (file_exists($default_log_file)) {
         $log_content = file_get_contents($default_log_file);
-        // Use json_encode to safely escape the string for JavaScript
-        $escaped_log_content = json_encode($log_content);
-        echo "<script>var defaultLogData = $escaped_log_content;</script>";
+        // Embed the log content in a script tag with a custom type. This is more robust
+        // than creating a JavaScript string literal, which can have escaping issues.
+        echo '<script id="default-log-data" type="text/plain">' . htmlspecialchars($log_content, ENT_NOQUOTES, 'UTF-8') . '</script>';
     }
   ?>
 
