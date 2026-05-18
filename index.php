@@ -30,12 +30,18 @@
         // than creating a JavaScript string literal, which can have escaping issues.
         echo '<script id="default-log-data" type="text/plain">' . htmlspecialchars($log_content, ENT_NOQUOTES, 'UTF-8') . '</script>';
     }
+
+    $annotations_file = __DIR__ . '/annotations.json';
+    if (file_exists($annotations_file)) {
+        $annotations_content = file_get_contents($annotations_file);
+        echo '<script id="default-annotations-data" type="text/plain">' . htmlspecialchars($annotations_content, ENT_NOQUOTES, 'UTF-8') . '</script>';
+    }
   ?>
 
   <body>
     <!-- Canvases; bg for grid and terrain, fg for objects. Hitbox is drawn in-script. -->
     <canvas id="canvas-bg"></canvas>
-    <canvas id="canvas-fg" style="cursor: grab;"></canvas>
+    <canvas id="canvas-fg"></canvas>
     <svg id="token-overlay"></svg>
 
     <!-- Playback controls -->
@@ -56,10 +62,27 @@
     <div id="tools">
       <button class="ee-button tool-button active" data-tool="pan" title="Pan/Select (P)">✋</button>
       <button class="ee-button tool-button" data-tool="add_token" title="Add Token (T)">★</button>
+      <button class="ee-button tool-button" data-tool="draw" title="Draw (R)">✏️</button>
+      <button class="ee-button" id="undo_drawing" title="Undo (Ctrl+Z)">↩</button>
+      <button class="ee-button tool-button" data-tool="delete" title="Delete (Del/Backspace)">🗑️</button>
+      <button class="ee-button" id="save_annotations" title="Save Annotations (Ctrl+S)">💾</button>
+      <div id="draw-options">
+        <div class="color-row">
+            <div class="color-swatch active" data-color="#2563eb" style="background:#2563eb"></div>
+            <div class="color-swatch" data-color="#dc2626" style="background:#dc2626"></div>
+            <div class="color-swatch" data-color="#16a34a" style="background:#16a34a"></div>
+            <div class="color-swatch" data-color="#ca8a04" style="background:#ca8a04"></div>
+            <div class="color-swatch" data-color="#ea580c" style="background:#ea580c"></div>
+            <div class="color-swatch" data-color="#ffffff" style="background:#ffffff"></div>
+        </div>
+        <div class="brush-row">
+            <input type="range" id="brush-size" min="20" max="500" value="100" class="ee-slider">
+        </div>
+      </div>
     </div>
 
     <!-- Selection infobox -->
-    <div id="infobox" class="centered-infobox">
+    <div id="infobox">
       <div id="infobox-scroll-container">
         <table id="infobox-content"></table>
       </div>

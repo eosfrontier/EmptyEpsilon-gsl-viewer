@@ -28,12 +28,17 @@ class Canvas {
     this._tokenOverlay[0].appendChild(this._tokenContainer);
 
     // Custom user tokens
-    this._customTokens = [];
-    this._customTokenCounter = 0;
+    this._userObjects = {};
+    this._userHistory = [];
+    this._userObjectCounter = 0;
     this._currentTool = 'pan';
     this._panActive = false;
     this._tokenClicked = false;
-    
+    this._isDrawing = false;
+    this._currentStrokeId = null;
+    this._drawColor = '#2563eb'; // Default color
+    this._drawThickness = 100; // Default thickness
+
     // Get the infobox for displaying selected object data.
     this._infobox = $("#infobox");
 
@@ -78,7 +83,63 @@ class Canvas {
     // Handle canvas mouse events.
     this._canvas.mousedown((event) => this._mouseDown(event));
     this._canvas.mousemove((event) => this._mouseMove(event));
-    this._canvas.mouseup((event) => this._mouseUp(event));
+
+    // Bind mouseup to the document to correctly end drawing or panning even if the mouse is released outside the canvas.
+    $(document).on('mouseup', (event) => {
+      // If we are drawing or panning, we want to stop regardless of where the mouse is released.
+      if (this._isDrawing || this._panActive) {
+        this._mouseUp(event);
+      } else if (event.target === this._canvas[0]) { // For other actions (like selection clicks), only trigger if the event happened on the canvas.
+        this._mouseUp(event);
+      }
+    });
+
+    // Handle infobox events via delegation. This is more robust than re-binding events every time the infobox is rendered.
+    this._infobox.on('click', '.shape-button', (event) => {
+      if (!this._selectedObject || !this._selectedObject.isCustom) return;
+      const token = this._selectedObject;
+      this._infobox.find('.shape-button').removeClass('ee-button-active');
+      $(event.currentTarget).addClass('ee-button-active');
+      token.shape = $(event.currentTarget).data('shape');
+      this.updateTokenElement(token);
+    });
+
+    this._infobox.on('input', '#token_callsign', (event) => {
+      if (!this._selectedObject || !this._selectedObject.isCustom) return;
+      this._selectedObject.callsign = $(event.currentTarget).val();
+      this.updateTokenElement(this._selectedObject);
+    });
+
+    this._infobox.on('change', '#token_faction', (event) => {
+      if (!this._selectedObject || !this._selectedObject.isCustom) return;
+      this._selectedObject.faction = $(event.currentTarget).val();
+      this.updateTokenElement(this._selectedObject);
+    });
+
+    this._infobox.on('input', '#token_size_selector', (event) => {
+      if (!this._selectedObject || !this._selectedObject.isCustom) return;
+      this._selectedObject.size = parseFloat($(event.currentTarget).val());
+      this.updateTokenElement(this._selectedObject);
+    });
+
+    this._infobox.on('input', '#token_rotation_selector', (event) => {
+      if (!this._selectedObject || !this._selectedObject.isCustom) return;
+      this._selectedObject.rotation = parseInt($(event.currentTarget).val(), 10);
+      this.updateTokenElement(this._selectedObject);
+    });
+
+    this._infobox.on('click', '#save_token', () => {
+      if (!this._selectedObject || !this._selectedObject.isCustom) return;
+      this._selectedObject = { type: "No selection" };
+      this._infobox.removeClass('centered-infobox').hide();
+      this.update();
+    });
+
+    this._infobox.on('click', '#delete_token', () => {
+      if (!this._selectedObject || !this._selectedObject.isCustom) return;
+      this.removeToken(this._selectedObject.id);
+    });
+
     this._canvas.bind("wheel", (event) => {
       // Prevent default scroll behavior in Webkit
       event.preventDefault();
@@ -87,6 +148,9 @@ class Canvas {
 
     // Update canvas on window resize.
     $(window).resize(() => this.update());
+
+    // Load any persisted user objects from the page
+    this.loadAnnotationsFromPage();
 
     // Initialize view origin, zoom, and options.
     this._view = {
@@ -125,7 +189,11 @@ class Canvas {
   setCurrentTool(tool) {
     this._currentTool = tool;
     this._panActive = false; // Stop panning when tool changes
-    this._canvas.css('cursor', tool === 'pan' ? 'grab' : 'crosshair');
+    let cursor = 'crosshair';
+    if (tool === 'pan') {
+      cursor = 'grab';
+    }
+    this._canvas.css('cursor', cursor);
   }
 
   screenToWorld(clientX, clientY) {
@@ -137,8 +205,188 @@ class Canvas {
     return { x: worldX, y: worldY };
   }
 
+  setDrawColor(color) {
+    this._drawColor = color;
+  }
+
+  setDrawThickness(thickness) {
+    this._drawThickness = parseInt(thickness, 10);
+  }
+
+  saveAnnotationsToServer() {
+    const plainObjects = {};
+    for (const id in this._userObjects) {
+      const obj = this._userObjects[id];
+      let plainObj;
+      if (obj.type === 'token') {
+        plainObj = {
+          id: obj.id,
+          type: obj.type,
+          isCustom: obj.isCustom,
+          callsign: obj.callsign,
+          position: obj.position,
+          rotation: obj.rotation,
+          size: obj.size,
+          faction: obj.faction,
+          shape: obj.shape
+        };
+      } else if (obj.type === 'stroke') {
+        plainObj = {
+          id: obj.id,
+          type: obj.type,
+          d: obj.d,
+          color: obj.pathEl.getAttribute('stroke'),
+          thickness: obj.pathEl.getAttribute('stroke-width')
+        };
+      }
+      if (plainObj) {
+        plainObjects[id] = plainObj;
+      }
+    }
+
+    const dataToSave = {
+      objects: plainObjects,
+      history: this._userHistory,
+      counter: this._userObjectCounter
+    };
+
+    const formData = new FormData();
+    formData.append('data', JSON.stringify(dataToSave));
+
+    fetch('save_annotations.php', {
+      method: 'POST',
+      body: formData,
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === 'success') {
+        console.log('Annotations saved:', data.message);
+      } else {
+        throw new Error(data.message || 'Unknown error saving annotations.');
+      }
+    })
+    .catch((error) => {
+      console.error('Error saving annotations:', error);
+      alert('Error: Could not save annotations to the server. ' + error.message);
+    });
+  }
+
+  loadAnnotationsFromPage() {
+    const annotationsElement = document.getElementById('default-annotations-data');
+    if (!annotationsElement) return;
+
+    const savedData = annotationsElement.textContent;
+    if (!savedData || savedData.trim().length === 0) return;
+
+    try {
+      const data = JSON.parse(savedData);
+
+      this._userObjectCounter = data.counter || 0;
+      this._userHistory = data.history || [];
+      this._userObjects = {}; // Clear existing before loading
+
+      // Recreate objects
+      for (const id in data.objects) {
+        const plainObj = data.objects[id];
+        if (plainObj.type === 'token') {
+          this.recreateToken(plainObj);
+        } else if (plainObj.type === 'stroke') {
+          this.recreateStroke(plainObj);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load user objects from page data", e);
+    }
+  }
+
+  recreateToken(plainObj) {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute('data-id', plainObj.id);
+    g.style.cursor = 'pointer';
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute('y', 550);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-family', "'Big Shoulders', 'Bebas Neue Book', Impact, Arial, sans-serif");
+    text.setAttribute('font-size', '350px');
+    text.setAttribute('stroke', '#000');
+    text.setAttribute('stroke-width', '30');
+    text.setAttribute('paint-order', 'stroke');
+    g.appendChild(text);
+
+    const token = { ...plainObj, element: g };
+    this._userObjects[token.id] = token;
+
+    this.updateTokenElement(token);
+    this._attachTokenDragEvents(token);
+    this._tokenContainer.appendChild(g);
+  }
+
+  recreateStroke(plainObj) {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.style.cursor = 'pointer';
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', plainObj.color);
+    path.setAttribute('stroke-width', plainObj.thickness);
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('d', plainObj.d);
+    g.appendChild(path);
+
+    const hitPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    hitPath.setAttribute('fill', 'none');
+    hitPath.setAttribute('stroke', 'transparent');
+    // Make hit area wider
+    hitPath.setAttribute('stroke-width', parseInt(plainObj.thickness, 10) + 40);
+    hitPath.setAttribute('stroke-linecap', 'round');
+    hitPath.setAttribute('stroke-linejoin', 'round');
+    hitPath.setAttribute('d', plainObj.d);
+    g.appendChild(hitPath);
+
+    const stroke = { ...plainObj, element: g, pathEl: path, hitEl: hitPath };
+    this._userObjects[stroke.id] = stroke;
+
+    this._attachStrokeEvents(stroke);
+    this._tokenContainer.appendChild(g);
+  }
+
   // Record cursor coordinates on click and release, for dragging.
   _mouseDown(event) {
+    if (this._currentTool === 'draw') {
+      this._isDrawing = true;
+      const worldPos = this.screenToWorld(event.clientX, event.clientY);
+
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.style.cursor = 'pointer';
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', this._drawColor);
+      path.setAttribute('stroke-width', this._drawThickness);
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      g.appendChild(path);
+
+      const hitPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      hitPath.setAttribute('fill', 'none');
+      hitPath.setAttribute('stroke', 'transparent');
+      hitPath.setAttribute('stroke-width', this._drawThickness + 40);
+      hitPath.setAttribute('stroke-linecap', 'round');
+      hitPath.setAttribute('stroke-linejoin', 'round');
+      g.appendChild(hitPath);
+
+      const d = `M ${worldPos.x} ${worldPos.y}`;
+      path.setAttribute('d', d);
+      hitPath.setAttribute('d', d);
+
+      const strokeObj = this.addUserObject('stroke', { element: g, pathEl: path, hitEl: hitPath, d: d });
+      this._currentStrokeId = strokeObj.id;
+      this._attachStrokeEvents(strokeObj);
+      this._tokenContainer.appendChild(g);
+      return;
+    }
     if (this._currentTool === 'add_token') {
       const worldPos = this.screenToWorld(event.clientX, event.clientY);
       this.addToken(worldPos.x, worldPos.y);
@@ -156,6 +404,12 @@ class Canvas {
 
   // Handle the end of click/drag events.
   _mouseUp(event) {
+    if (this._isDrawing) {
+      this._isDrawing = false;
+      this._currentStrokeId = null;
+      return;
+    }
+
     // If a token was just clicked, its own handler has already dealt with selection.
     // Prevent the canvas mouseup from overriding it.
     if (this._tokenClicked) {
@@ -254,28 +508,62 @@ class Canvas {
     }
   }
 
+  undo() {
+    if (this._userHistory.length === 0) return;
+    const lastId = this._userHistory.pop();
+
+    const obj = this._userObjects[lastId];
+    if (obj && obj.element) obj.element.remove();
+    delete this._userObjects[lastId];
+
+    if (this._selectedObject && this._selectedObject.id === lastId) {
+      this._selectedObject = { type: "No selection" };
+      this._infobox.removeClass('centered-infobox').hide();
+    }
+    this.update();
+  }
+
+  addUserObject(type, data) {
+    const id = 'user_' + this._userObjectCounter++;
+    const obj = { id, type, ...data };
+    this._userObjects[id] = obj;
+    this._userHistory.push(id);
+    return obj;
+  }
+
+  removeUserObject(id) {
+    const obj = this._userObjects[id];
+    if (!obj) return;
+
+    if (obj.element) obj.element.remove();
+    delete this._userObjects[id];
+
+    this._userHistory = this._userHistory.filter(hId => hId !== id);
+
+    if (this._selectedObject && this._selectedObject.id === id) {
+      this._selectedObject = { type: "No selection" };
+      this._infobox.removeClass('centered-infobox').hide();
+    }
+    this.update();
+  }
+
   addToken(worldX, worldY) {
-    const id = 'custom_' + this._customTokenCounter++;
-    const token = {
-      id: id,
+    const tokenData = {
       isCustom: true,
       type: 'Custom Token',
-      callsign: 'Custom Token ' + (this._customTokenCounter - 1),
+      callsign: 'Custom Token ' + this._userObjectCounter,
       position: [worldX, worldY],
       rotation: 0,
       size: 1.0,
       faction: 'ICC', // default
+      shape: 'ship'
     };
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    const token = this.addUserObject('token', tokenData);
+    const id = token.id;
     g.setAttribute('data-id', id);
     g.style.cursor = 'pointer';
-
-    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    poly.setAttribute('points', '0,-400 -280,200 280,200');
-    poly.setAttribute('stroke', '#000');
-    poly.setAttribute('stroke-width', '25');
-    g.appendChild(poly);
 
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
     text.setAttribute('y', 550);
@@ -288,61 +576,10 @@ class Canvas {
     g.appendChild(text);
 
     token.element = g;
-    this._customTokens.push(token);
     this.updateTokenElement(token); // Set initial appearance
 
     // Drag logic
-    g.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      e.preventDefault(); // Prevent default browser actions like text selection
-      if (this._currentTool !== 'pan') return;
-
-      this._tokenClicked = true;
-
-      let dragMoved = false;
-      const dragThreshold = 3;
-      const startClient = { x: e.clientX, y: e.clientY };
-
-      const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
-      const dragStartPos = { x: token.position[0], y: token.position[1] };
-
-      const onPointerMove = (moveEvent) => {
-        const dx = moveEvent.clientX - startClient.x;
-        const dy = moveEvent.clientY - startClient.y;
-
-        if (!dragMoved && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
-          dragMoved = true;
-          // A drag has started. If a token is selected, deselect it to hide the infobox.
-          if (this._selectedObject && this._selectedObject.isCustom) {
-            this._selectedObject = { type: "No selection" };
-            this._infobox.removeClass('centered-infobox').hide();
-            this.update();
-          }
-        }
-
-        if (dragMoved) {
-          const currentWorld = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
-          const dWorldX = currentWorld.x - dragStartWorld.x;
-          const dWorldY = currentWorld.y - dragStartWorld.y;
-          token.position[0] = dragStartPos.x + dWorldX;
-          token.position[1] = dragStartPos.y + dWorldY;
-          this.updateTokenElement(token);
-        }
-      };
-      const onPointerUp = (upEvent) => {
-        document.removeEventListener('pointermove', onPointerMove);
-        document.removeEventListener('pointerup', onPointerUp);
-
-        if (!dragMoved) {
-          // This was a click.
-          this._selectedObject = token;
-          this.updateSelectionInfobox();
-          this.update();
-        }
-      };
-      document.addEventListener('pointermove', onPointerMove);
-      document.addEventListener('pointerup', onPointerUp);
-    });
+    this._attachTokenDragEvents(token);
 
     this._tokenContainer.appendChild(g);
     this._selectedObject = token;
@@ -350,13 +587,112 @@ class Canvas {
     this.update();
   }
 
+  _attachStrokeEvents(stroke) {
+    const g = stroke.element;
+    g.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (this._currentTool === 'delete') {
+        this.removeUserObject(stroke.id);
+      }
+    });
+  }
+
+  _attachTokenDragEvents(token) {
+    const g = token.element;
+    g.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        e.preventDefault(); // Prevent default browser actions like text selection
+        if (this._currentTool !== 'pan') return;
+
+        if (this._currentTool === 'delete') {
+            this.removeUserObject(token.id);
+            return;
+        }
+
+        this._tokenClicked = true;
+
+        let dragMoved = false;
+        const dragThreshold = 3;
+        const startClient = { x: e.clientX, y: e.clientY };
+
+        const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
+        const dragStartPos = { x: token.position[0], y: token.position[1] };
+
+        const onPointerMove = (moveEvent) => {
+            const dx = moveEvent.clientX - startClient.x;
+            const dy = moveEvent.clientY - startClient.y;
+
+            if (!dragMoved && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
+                dragMoved = true;
+                // A drag has started. If a token is selected, deselect it to hide the infobox.
+                if (this._selectedObject && this._selectedObject.isCustom) {
+                    this._selectedObject = { type: "No selection" };
+                    this._infobox.removeClass('centered-infobox').hide();
+                    this.update();
+                }
+            }
+
+            if (dragMoved) {
+                const currentWorld = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
+                const dWorldX = currentWorld.x - dragStartWorld.x;
+                const dWorldY = currentWorld.y - dragStartWorld.y;
+                token.position[0] = dragStartPos.x + dWorldX;
+                token.position[1] = dragStartPos.y + dWorldY;
+                this.updateTokenElement(token);
+            }
+        };
+        const onPointerUp = () => {
+            document.removeEventListener('pointermove', onPointerMove);
+            document.removeEventListener('pointerup', onPointerUp);
+
+            if (!dragMoved) {
+                // This was a click.
+                this._selectedObject = token;
+                this.updateSelectionInfobox();
+                this.update();
+            }
+        };
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', onPointerUp);
+    });
+  }
+
   updateTokenElement(token) {
     const g = token.element;
-    const poly = g.querySelector('polygon');
+
+    // Remove existing shape if it exists, and create a new one.
+    const oldShape = g.querySelector('.token-shape');
+    if (oldShape) oldShape.remove();
+
+    let shapeEl;
+    switch (token.shape) {
+    case 'station':
+      shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      const hexSize = 400;
+      let hexPoints = "";
+      for (let i = 0; i < 6; i++) {
+        hexPoints += `${hexSize * Math.cos(i * 2 * Math.PI / 6)},${hexSize * Math.sin(i * 2 * Math.PI / 6)} `;
+      }
+      shapeEl.setAttribute('points', hexPoints.trim());
+      break;
+    case 'marker':
+      shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      shapeEl.setAttribute('points', '0,-400 300,0 0,400 -300,0');
+      break;
+    case 'ship':
+    default:
+      shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      shapeEl.setAttribute('points', '0,-400 -280,200 280,200');
+      break;
+    }
+    shapeEl.classList.add('token-shape');
+    g.insertBefore(shapeEl, g.firstChild); // insert before text
+
     const text = g.querySelector('text');
 
     const factionColor = Canvas.getFactionColor(token.faction, "CC", "FF");
-    poly.setAttribute('fill', factionColor);
+    shapeEl.setAttribute('fill', factionColor);
     text.setAttribute('fill', factionColor);
     text.textContent = token.callsign;
 
@@ -365,15 +701,7 @@ class Canvas {
   }
 
   removeToken(tokenId) {
-    const tokenIndex = this._customTokens.findIndex(t => t.id === tokenId);
-    if (tokenIndex > -1) {
-      this._customTokens[tokenIndex].element.remove();
-      this._customTokens.splice(tokenIndex, 1);
-      this._selectedObject = { type: "No selection" };
-      this._infobox.removeClass('centered-infobox');
-      this._infobox.hide();
-      this.update();
-    }
+    this.removeUserObject(tokenId);
   }
 
   // Zoom camera in (positive zoomFactor), out (negative zoomFactor), or to a given level (zoomValue).
@@ -441,10 +769,15 @@ class Canvas {
       infoboxContents += `<tr class="ee-infobox-title"><td colspan=2 class="ee-infobox-header">Custom Token</td>`;
       infoboxContents += `<tr><td class="ee-table-key">Callsign</td><td class="ee-table-value"><input type="text" id="token_callsign" value="${token.callsign}"></td></tr>`;
       infoboxContents += `<tr><td class="ee-table-key">Faction</td><td class="ee-table-value"><select id="token_faction"></select></td></tr>`;
+      infoboxContents += `<tr><td class="ee-table-key">Shape</td><td class="ee-table-value shape-selector-row">
+        <button class="ee-button shape-button" data-shape="ship" title="Ship">▲</button>
+        <button class="ee-button shape-button" data-shape="station" title="Station">⬢</button>
+        <button class="ee-button shape-button" data-shape="marker" title="Marker">♦</button>
+      </td></tr>`;
       infoboxContents += `<tr><td class="ee-table-key">Position</td><td class="ee-table-value">${token.position[0].toFixed(1)}, ${token.position[1].toFixed(1)}</td></tr>`;
       infoboxContents += `<tr><td class="ee-table-key">Size</td><td><input class="ee-slider" id="token_size_selector" type="range" min="0.2" max="5" step="0.1" value="${token.size}"></td></tr>`;
       infoboxContents += `<tr><td class="ee-table-key">Rotation</td><td><input class="ee-slider" id="token_rotation_selector" type="range" min="0" max="359" step="1" value="${token.rotation}"></td></tr>`;
-      infoboxContents += `<tr><td colspan="2" style="text-align: center; padding-top: 10px;"><button class="ee-button" id="save_token">Save</button> <button class="ee-button" id="delete_token">Delete</button></td></tr>`;
+      infoboxContents += `<tr><td colspan="2" class="infobox-actions"><button class="ee-button" id="save_token">Save</button> <button class="ee-button" id="delete_token">Delete</button></td></tr>`;
 
       this._infobox.show();
       infoboxContent.html(infoboxContents);
@@ -457,33 +790,10 @@ class Canvas {
       });
       factionSelect.val(token.faction);
 
-      // Add event handlers for the new controls
-      $("#token_callsign").on("input", (event) => {
-        token.callsign = $(event.target).val();
-        this.updateTokenElement(token);
-      });
-      $("#token_faction").on("change", (event) => {
-        token.faction = $(event.target).val();
-        this.updateTokenElement(token);
-      });
-      $("#token_size_selector").on("input", (event) => {
-        token.size = parseFloat($(event.target).val());
-        this.updateTokenElement(token);
-      });
-      $("#token_rotation_selector").on("input", (event) => {
-        token.rotation = parseInt($(event.target).val(), 10);
-        this.updateTokenElement(token);
-      });
-      $("#save_token").on("click", () => {
-        // Deselect object and hide infobox
-        this._selectedObject = { type: "No selection" };
-        this._infobox.removeClass('centered-infobox');
-        this._infobox.hide();
-        this.update();
-      });
-      $("#delete_token").on("click", () => {
-        this.removeToken(token.id);
-      });
+      // Set active shape button state. The event handlers are now delegated and live in the constructor.
+      this._infobox.find('.shape-button').removeClass('ee-button-active');
+      this._infobox.find(`.shape-button[data-shape="${token.shape}"]`).addClass('ee-button-active');
+
       return;
     }
 
@@ -810,6 +1120,15 @@ class Canvas {
 
   // Move view on mouse drag.
   _mouseMove (event) {
+    if (this._isDrawing && this._currentStrokeId) {
+      const worldPos = this.screenToWorld(event.clientX, event.clientY);
+      const obj = this._userObjects[this._currentStrokeId];
+      obj.d += ` L ${worldPos.x} ${worldPos.y}`;
+      obj.pathEl.setAttribute('d', obj.d);
+      obj.hitEl.setAttribute('d', obj.d);
+      return;
+    }
+
     if (this._panActive) {
       this._view.x += (this._lastMouse.x - event.clientX) / this._zoomScale;
       this._view.y += (this._lastMouse.y - event.clientY) / this._zoomScale;
@@ -1107,12 +1426,16 @@ class Canvas {
     const viewY = this._view.y - (viewHeight / 2);
     this._tokenOverlay[0].setAttribute('viewBox', `${viewX} ${viewY} ${viewWidth} ${viewHeight}`);
 
-    // Update selection highlight on SVG tokens
-    this._customTokens.forEach(t => {
-      const isSelected = this._selectedObject && this._selectedObject.id === t.id;
-      const poly = t.element.querySelector('polygon');
-      poly.setAttribute('stroke', isSelected ? '#FFFF00' : '#000000');
-      poly.setAttribute('stroke-width', isSelected ? '50' : '25');
+    // Update selection highlight on user objects
+    Object.values(this._userObjects).forEach(obj => {
+      if (obj.type === 'token') {
+        const isSelected = this._selectedObject && this._selectedObject.id === obj.id;
+        const shape = obj.element.querySelector('.token-shape');
+        if (shape) {
+          shape.setAttribute('stroke', isSelected ? '#FFFF00' : '#000000');
+          shape.setAttribute('stroke-width', isSelected ? '50' : '25');
+        }
+      }
     });
 
     // Draw the info line showing the scenario time, scale, X/Y coordinates, and sector designation.
@@ -1273,64 +1596,47 @@ class Canvas {
   // Would be nice to use the GM colors directly from factioninfo.lua.
   // Returns a long hex color string (ie. #FF0000).
   static getFactionColor (faction, lowColorMagnitude, highColorMagnitude) {
-    let lowColor = `${lowColorMagnitude}`,
-      highColor = `${highColorMagnitude}`;
-
-    // Convert short color codes to long codes by doubling the character.
-    if (lowColorMagnitude.length === 1) {
-      lowColor = `${lowColorMagnitude}${lowColorMagnitude}`;
-    }
-
-    if (highColorMagnitude.length === 1) {
-      highColor = `${highColorMagnitude}${highColorMagnitude}`;
-    }
-
-    // Faction colors from factionInfo.lua.
+    // Faction colors from factionInfo.lua and custom additions.
+    // The magnitude parameters are kept for compatibility but are no longer used.
     switch (faction) {
-    case "ICC":
-    case "Human":
-    case "Human Navy":
-      // human:setGMColor(255, 255, 255)
-      return `#${highColor}${highColor}${highColor}`;
-    case "Alien":
-    case "Kraylor":
-      // kraylor:setGMColor(255, 0, 0)
-      return `#${highColor}0000`;
-    case "Other":
-    case "Unknown":
-    case "Independent":
-      // neutral:setGMColor(128, 128, 128)
-      return `#${lowColor}${lowColor}${lowColor}`;
-    case "Dugo":
-    case "Arlenians":
-      // arlenians:setGMColor(255, 128, 0)
-      return `#${highColor}${lowColor}00`;
-    case "Exuari":
-      // exuari:setGMColor(255, 0, 128)
-      return `#${highColor}00${lowColor}`;
-    case "Sona":
-    case "Ghosts":
-      // GITM:setGMColor(0, 255, 0)
-      return `#00${highColor}00`;
-    case "Ktlitans":
-      // Hive:setGMColor(128, 255, 0)
-      return `#${lowColor}${highColor}00`;
-    case "Pendzal":
-    case "TSN":
-      // TSN:setGMColor(255, 255, 128)
-      return `#${highColor}${highColor}${lowColor}`;
-    case "Ekanesh":
-    case "USN":
-      // USN:setGMColor(255, 128, 255)
-      return `#${highColor}${lowColor}${highColor}`;
-    case "Aquila":
-    case "CUF":
-      // CUF:setGMColor(128, 255, 255)
-      return `#${lowColor}${highColor}${highColor}`;
-    default:
-      // Everybody else is fuschia.
-      console.error(`Unknown faction: ${faction}`);
-      return "#FF00FF";
+      // Custom colors from user request & suggestions
+      case "Aquila": return "#4169E1"; // Blue
+      case "Dugo": return "#FF0000"; // Red
+      case "Ekanesh": return "#228B22"; // Forest Green
+      case "Pendzal": return "#FFA500"; // Orange
+      case "Sona": return "#8A2BE2"; // Purple
+      case "ICC": return "#FFFFFF"; // White
+      case "Alien": return "#483D8B"; // Dark Slate Blue
+      case "Other":
+      case "Unknown":
+        return "#808080"; // Grey
+
+      // Original EmptyEpsilon colors
+      case "Human":
+      case "Human Navy":
+        return "#FFFFFF";
+      case "Kraylor":
+        return "#FF0000";
+      case "Independent":
+        return "#808080";
+      case "Arlenians":
+        return "#FF8000"; // was 255, 128, 0
+      case "Exuari":
+        return "#FF0080"; // was 255, 0, 128
+      case "Ghosts":
+        return "#00FF00";
+      case "Ktlitans":
+        return "#80FF00"; // was 128, 255, 0
+      case "TSN":
+        return "#FFFF80"; // was 255, 255, 128
+      case "USN":
+        return "#FF80FF"; // was 255, 128, 255
+      case "CUF":
+        return "#80FFFF"; // was 128, 255, 255
+      default:
+        // Everybody else is fuschia.
+        console.error(`Unknown faction: ${faction}`);
+        return "#FF00FF";
     }
   }
 

@@ -334,6 +334,31 @@ $().ready(function () {
     $(this).addClass("ee-button-active");
     currentTool = $(this).data("tool");
     canvas.setCurrentTool(currentTool);
+    if ('draw' === currentTool) {
+      $('#draw-options').show();
+    } else {
+      $('#draw-options').hide();
+    }
+  });
+
+  // Draw options
+  $('.color-swatch').on('click', function() {
+    $('.color-swatch').removeClass('active');
+    $(this).addClass('active');
+    canvas.setDrawColor($(this).data('color'));
+  });
+  $('#brush-size').on('input', () => {
+    const size = $('#brush-size').val();
+    canvas.setDrawThickness(size);
+  });
+
+  // Undo last drawing/token
+  $("#undo_drawing").on("click", function (/* event */) {
+    canvas.undo();
+  });
+
+  $("#save_annotations").on("click", function() {
+    canvas.saveAnnotationsToServer();
   });
 
   // Keyboard shortcuts
@@ -342,6 +367,13 @@ $().ready(function () {
   // Tool selection
   Mousetrap.bind("p", () => $(".tool-button[data-tool='pan']").click());
   Mousetrap.bind("t", () => $(".tool-button[data-tool='add_token']").click());
+  Mousetrap.bind("r", () => $(".tool-button[data-tool='draw']").click());
+  Mousetrap.bind(["del", "backspace"], () => $(".tool-button[data-tool='delete']").click());
+  Mousetrap.bind("ctrl+z", () => $("#undo_drawing").click());
+  Mousetrap.bind("ctrl+s", (e) => {
+    e.preventDefault();
+    $("#save_annotations").click();
+  });
 
   // Zoom controls
   // Double the zoom rate if holding shift.
