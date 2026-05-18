@@ -2,4 +2,4 @@
 .eslintrc.js
 package.json
 annotations.json
-.gitignore
+default_logfile.txt
