@@ -49,6 +49,9 @@ $().ready(function () {
     // Do not initiate playback on ready by default.
     isAutoplaying = false;
 
+  // Tool selection state
+  let currentTool = 'pan';
+
   // Check for default log data embedded in the page and load it.
   const defaultLogElement = document.getElementById('default-log-data');
   if (defaultLogElement) {
@@ -325,8 +328,20 @@ $().ready(function () {
     toggleCallsigns();
   });
 
+  // Tool selection
+  $(".tool-button").on("click", function (/* event */) {
+    $(".tool-button").removeClass("ee-button-active");
+    $(this).addClass("ee-button-active");
+    currentTool = $(this).data("tool");
+    canvas.setCurrentTool(currentTool);
+  });
+
   // Keyboard shortcuts
   // ==================
+
+  // Tool selection
+  Mousetrap.bind("p", () => $(".tool-button[data-tool='pan']").click());
+  Mousetrap.bind("t", () => $(".tool-button[data-tool='add_token']").click());
 
   // Zoom controls
   // Double the zoom rate if holding shift.

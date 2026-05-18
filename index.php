@@ -19,6 +19,46 @@
     <!-- Lua parser and dAST walker scripts -->
     <script src="js/luaparse.js"></script>
     <script src="js/walker.js"></script>
+    <style>
+      #token-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none; /* Clicks pass through to canvas unless on a token */
+      }
+      #token-overlay > * {
+        pointer-events: all; /* Tokens are clickable */
+      }
+      #tools {
+        position: absolute;
+        top: 100px;
+        left: 10px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        background: rgba(40, 40, 40, 0.8);
+        border-radius: 5px;
+        padding: 5px;
+      }
+      #infobox.centered-infobox, #infobox {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        right: auto; /* Override default positioning */
+        transform: translate(-50%, -50%);
+        z-index: 20; /* Ensure it's above the toolbar */
+        width: 350px;
+        height: auto;
+        overflow: visible;
+      }
+      #infobox.centered-infobox #infobox-scroll-container, #infobox {
+        height: auto;
+        max-height: none; /* Override default height limit */
+        overflow: visible;
+      }
+    </style>
   </head>
 
   <?php
@@ -34,7 +74,8 @@
   <body>
     <!-- Canvases; bg for grid and terrain, fg for objects. Hitbox is drawn in-script. -->
     <canvas id="canvas-bg"></canvas>
-    <canvas id="canvas-fg"></canvas>
+    <canvas id="canvas-fg" style="cursor: grab;"></canvas>
+    <svg id="token-overlay"></svg>
 
     <!-- Playback controls -->
     <div id="controls">
@@ -50,8 +91,14 @@
     <button class="ee-button" id="zoom_out">-</button>
     <button class="ee-button" id="lock_view">d</button>
 
+    <!-- Editing tools -->
+    <div id="tools">
+      <button class="ee-button tool-button active" data-tool="pan" title="Pan/Select (P)">✋</button>
+      <button class="ee-button tool-button" data-tool="add_token" title="Add Token (T)">★</button>
+    </div>
+
     <!-- Selection infobox -->
-    <div id="infobox">
+    <div id="infobox" class="centered-infobox">
       <div id="infobox-scroll-container">
         <table id="infobox-content"></table>
       </div>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>EOS SYSTEM</title>
+<title>EOS FRONTIER — TACTICAL OVERLAY</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
@@ -26,390 +26,199 @@
     --hostile: #8b1a1a;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 
   body {
     background: var(--bg);
     font-family: 'DM Sans', sans-serif;
     color: var(--text);
     overflow: hidden;
-    height: 100vh;
-    width: 100vw;
-    display: flex;
-    flex-direction: column;
+    height: 100vh; width: 100vw;
+    display: flex; flex-direction: column;
   }
 
-  /* HEADER */
   #header {
-    flex-shrink: 0;
-    height: 48px;
-    background: #23262b;
-    border-bottom: 1px solid #333;
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    gap: 16px;
-    z-index: 100;
+    flex-shrink: 0; height: 48px;
+    background: #23262b; border-bottom: 1px solid #333;
+    display: flex; align-items: center; padding: 0 16px; gap: 16px; z-index: 100;
   }
   #header h1 {
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-on-dark);
-    letter-spacing: 2px;
-    white-space: nowrap;
-    opacity: 0.9;
+    font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;
+    color: var(--text-on-dark); letter-spacing: 2px; white-space: nowrap; opacity: 0.9;
   }
   #header .sep { flex: 1; }
   #clear-btn {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    color: #e87070;
-    background: transparent;
-    border: 1px solid #6b3030;
-    padding: 5px 12px;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.15s;
+    font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+    color: #e87070; background: transparent; border: 1px solid #6b3030;
+    padding: 5px 12px; cursor: pointer; border-radius: 4px; transition: all 0.15s;
   }
   #clear-btn:hover { background: rgba(232,112,112,0.1); border-color: #e87070; }
 
-  /* MAIN AREA */
-  #main {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-    position: relative;
-  }
+  #main { flex: 1; display: flex; overflow: hidden; position: relative; }
 
-  /* MAP AREA */
   #map-container {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-    cursor: crosshair;
-    touch-action: none;
+    flex: 1; position: relative; overflow: hidden;
+    cursor: crosshair; touch-action: none; user-select: none;
   }
-
-  #map-viewport {
-    position: absolute;
-    top: 0; left: 0;
-    transform-origin: 0 0;
-  }
-
-  #base-img {
-    display: block;
-    user-select: none;
-    -webkit-user-drag: none;
-  }
-
-  #draw-canvas {
-    position: absolute;
-    top: 0; left: 0;
-    pointer-events: none;
-  }
-
-  #overlay-svg {
-    position: absolute;
-    top: 0; left: 0;
-    overflow: visible;
-  }
+  #map-viewport { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  #base-img { display: block; user-select: none; -webkit-user-drag: none; }
+  #overlay-svg { position: absolute; top: 0; left: 0; overflow: visible; }
 
   /* SIDEBAR */
   #sidebar {
-    width: 210px;
-    flex-shrink: 0;
-    background: var(--panel);
-    border-left: 1px solid var(--panel-border);
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    z-index: 10;
+    width: 210px; flex-shrink: 0;
+    background: var(--panel); border-left: 1px solid var(--panel-border);
+    display: flex; flex-direction: column; overflow-y: auto; z-index: 10;
   }
-
-  .tool-section {
-    padding: 12px 12px 10px;
-    border-bottom: 1px solid var(--panel-border);
-  }
-
+  .tool-section { padding: 12px 12px 10px; border-bottom: 1px solid var(--panel-border); }
   .section-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    margin-bottom: 8px;
+    font-size: 10px; font-weight: 600; letter-spacing: 1px;
+    color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px;
   }
-
   .tool-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 9px 10px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-    text-align: left;
-    margin-bottom: 2px;
-    transition: all 0.12s;
-    user-select: none;
+    width: 100%; display: flex; align-items: center; gap: 9px;
+    padding: 9px 10px; background: transparent; border: 1px solid transparent;
+    border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 500; color: var(--text);
+    text-align: left; margin-bottom: 2px; transition: all 0.12s; user-select: none;
   }
-  .tool-btn:hover { background: var(--panel-inner); color: var(--text); }
-  .tool-btn.active {
-    background: var(--accent-light);
-    border-color: #a8c4f0;
-    color: var(--accent);
-  }
+  .tool-btn:hover { background: var(--panel-inner); }
+  .tool-btn.active { background: var(--accent-light); border-color: #a8c4f0; color: var(--accent); }
+  .tool-btn.delete-btn.active { background: var(--red-light); border-color: #f0a8a8; color: var(--red); }
   .tool-btn .icon { font-size: 15px; width: 20px; text-align: center; }
 
-  /* Draw colors */
-  .color-row {
-    display: flex;
-    gap: 7px;
-    flex-wrap: wrap;
-    padding: 2px 0;
-  }
+  .color-row { display: flex; gap: 7px; flex-wrap: wrap; padding: 2px 0; }
   .color-swatch {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    border: 2px solid transparent;
-    cursor: pointer;
-    transition: transform 0.1s, box-shadow 0.1s;
+    width: 28px; height: 28px; border-radius: 6px; border: 2px solid transparent;
+    cursor: pointer; transition: transform 0.1s, box-shadow 0.1s;
     box-shadow: 0 1px 3px rgba(0,0,0,0.15);
   }
   .color-swatch:hover { transform: scale(1.1); }
   .color-swatch.active { border-color: var(--text); transform: scale(1.12); box-shadow: 0 2px 6px rgba(0,0,0,0.25); }
 
-  /* Brush size */
-  .brush-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-  }
+  .brush-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .brush-row label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
-  .brush-row input[type=range] {
-    flex: 1;
-    accent-color: var(--accent);
-  }
+  .brush-row input[type=range] { flex: 1; accent-color: var(--accent); }
   #brush-size-val { font-size: 12px; font-weight: 600; color: var(--accent); width: 18px; }
 
-  /* Ship name list */
-  .ship-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
+  .ship-list { display: flex; flex-direction: column; gap: 2px; }
   .ship-name-btn {
-    width: 100%;
-    padding: 8px 10px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    cursor: pointer;
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text);
-    text-align: left;
-    transition: all 0.1s;
-    user-select: none;
+    width: 100%; padding: 8px 10px; background: transparent; border: 1px solid transparent;
+    border-radius: 5px; cursor: pointer; font-family: 'DM Mono', monospace;
+    font-size: 11px; font-weight: 500; color: var(--text); text-align: left;
+    transition: all 0.1s; user-select: none;
   }
   .ship-name-btn:hover { background: var(--panel-inner); }
   .ship-name-btn.selected { border-color: #a8c4f0; color: var(--accent); background: var(--accent-light); }
   .ship-name-btn.hostile { color: var(--hostile); }
   .ship-name-btn.hostile:hover { background: var(--red-light); }
   .ship-name-btn.hostile.selected { border-color: #e0a0a0; background: var(--red-light); color: var(--hostile); }
+  .ship-name-btn.custom-btn { color: var(--text-dim); font-style: italic; }
+  .ship-name-btn.custom-btn.selected { color: var(--accent); font-style: normal; }
 
-  /* Ship color row */
-  .ship-color-row {
-    display: flex;
-    gap: 6px;
-    margin-top: 4px;
-    margin-bottom: 2px;
-  }
+  .ship-color-row { display: flex; gap: 6px; margin-top: 4px; margin-bottom: 2px; }
   .ship-color-opt {
-    flex: 1;
-    padding: 7px 0;
-    border: 2px solid var(--panel-border);
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
-    text-align: center;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.12s;
-    user-select: none;
+    flex: 1; padding: 7px 0; border: 2px solid var(--panel-border); border-radius: 5px;
+    cursor: pointer; font-size: 11px; font-weight: 600; text-align: center;
+    font-family: 'DM Sans', sans-serif; transition: all 0.12s; user-select: none;
     background: var(--panel-inner);
   }
-  .ship-color-opt.red  { color: var(--red); }
-  .ship-color-opt.green{ color: var(--green); }
-  .ship-color-opt.grey { color: var(--grey); }
-  .ship-color-opt.red.active  { border-color: var(--red);   background: var(--red-light); }
-  .ship-color-opt.green.active{ border-color: var(--green);  background: var(--green-light); }
-  .ship-color-opt.grey.active { border-color: var(--grey);   background: var(--grey-light); }
+  .ship-color-opt.red   { color: var(--red); }
+  .ship-color-opt.green { color: var(--green); }
+  .ship-color-opt.grey  { color: var(--grey); }
+  .ship-color-opt.red.active   { border-color: var(--red);   background: var(--red-light); }
+  .ship-color-opt.green.active { border-color: var(--green); background: var(--green-light); }
+  .ship-color-opt.grey.active  { border-color: var(--grey);  background: var(--grey-light); }
 
-  /* Zoom controls */
-  .zoom-row {
-    display: flex;
-    gap: 6px;
-  }
+  .zoom-row { display: flex; gap: 6px; }
   .zoom-btn {
-    flex: 1;
-    padding: 8px;
-    background: var(--panel-inner);
-    border: 1px solid var(--panel-border);
-    border-radius: 5px;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-    text-align: center;
-    transition: all 0.1s;
-    user-select: none;
+    flex: 1; padding: 8px; background: var(--panel-inner); border: 1px solid var(--panel-border);
+    border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600;
+    color: var(--text); text-align: center; transition: all 0.1s; user-select: none;
   }
   .zoom-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-  #zoom-label {
-    text-align: center;
-    font-size: 11px;
-    color: var(--text-dim);
-    margin-top: 6px;
-  }
+  #zoom-label { text-align: center; font-size: 11px; color: var(--text-dim); margin-top: 6px; }
 
-  /* Undo */
   #undo-btn {
-    width: 100%;
-    padding: 8px;
-    background: var(--panel-inner);
-    border: 1px solid var(--panel-border);
-    border-radius: 5px;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-    text-align: center;
-    transition: all 0.1s;
-    user-select: none;
-    margin-top: 6px;
+    width: 100%; padding: 8px; background: var(--panel-inner); border: 1px solid var(--panel-border);
+    border-radius: 5px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 500; color: var(--text); text-align: center;
+    transition: all 0.1s; user-select: none; margin-top: 6px;
   }
   #undo-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
-  /* Ship tooltip / label on map */
-  .ship-label {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 10px;
-    pointer-events: none;
+  /* MODALS */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 1000;
+    align-items: center; justify-content: center;
   }
+  .modal-backdrop.open { display: flex; }
+  .modal-box {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 20px; width: 300px;
+    max-height: 85vh; overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+  }
+  .modal-title {
+    font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500;
+    color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase;
+  }
+  .modal-close {
+    width: 30px; height: 30px; border: none; background: var(--panel-inner);
+    border-radius: 50%; cursor: pointer; font-size: 15px; color: var(--text-dim);
+    display: flex; align-items: center; justify-content: center; transition: all 0.1s; flex-shrink: 0;
+  }
+  .modal-close:hover { background: var(--red-light); color: var(--red); }
+  .modal-input-field {
+    width: 100%; padding: 12px 14px; font-family: 'DM Mono', monospace;
+    font-size: 15px; font-weight: 500; color: var(--text); background: white;
+    border: 2px solid var(--panel-border); border-radius: 8px;
+    outline: none; margin-bottom: 12px; transition: border-color 0.15s;
+  }
+  .modal-input-field:focus { border-color: var(--accent); }
+  .modal-confirm-btn {
+    width: 100%; padding: 12px; background: var(--accent); border: none;
+    border-radius: 8px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 600; color: white; transition: opacity 0.15s;
+  }
+  .modal-confirm-btn:hover { opacity: 0.88; }
 
-  /* Modal for ship name selection (mobile fallback if needed) */
-  #name-modal {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 1000;
+  /* ACTION BAR */
+  #icon-action-bar {
+    display: none; position: fixed; bottom: 20px; left: 50%;
+    transform: translateX(-50%);
+    background: #23262b; border: 1px solid #444; border-radius: 10px;
+    padding: 8px 10px; gap: 8px; z-index: 200;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     align-items: center;
-    justify-content: center;
   }
-  #name-modal.open { display: flex; }
-  #name-modal-inner {
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    padding: 20px;
-    width: 290px;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  #icon-action-bar.open { display: flex; }
+  #action-bar-label {
+    font-family: 'DM Mono', monospace; font-size: 11px; color: #aaa;
+    padding: 0 4px; white-space: nowrap; max-width: 150px;
+    overflow: hidden; text-overflow: ellipsis;
   }
-  #name-modal h2 {
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-dim);
-    letter-spacing: 1px;
-    margin-bottom: 14px;
-    text-transform: uppercase;
+  .action-bar-btn {
+    padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+    transition: opacity 0.15s; white-space: nowrap;
   }
-  .modal-ship-btn {
-    display: block;
-    width: 100%;
-    padding: 11px 14px;
-    margin-bottom: 4px;
-    background: var(--panel-inner);
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: 'DM Mono', monospace;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text);
-    text-align: left;
-    transition: all 0.1s;
-  }
-  .modal-ship-btn:hover, .modal-ship-btn:active { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-  .modal-ship-btn.hostile { color: var(--hostile); }
-  .modal-ship-btn.hostile:hover { border-color: var(--red); background: var(--red-light); color: var(--hostile); }
-  #modal-cancel {
-    display: block;
-    width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-    background: transparent;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-dim);
-    transition: all 0.1s;
-  }
-  #modal-cancel:hover { border-color: var(--text-dim); color: var(--text); }
-
-  /* Context menu for placed icons */
-  #ctx-menu {
-    display: none;
-    position: fixed;
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    z-index: 500;
-    min-width: 130px;
-    overflow: hidden;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-  }
-  #ctx-menu.open { display: block; }
-  .ctx-item {
-    padding: 11px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    color: var(--text);
-    border-bottom: 1px solid var(--panel-border);
-    user-select: none;
-    font-family: 'DM Sans', sans-serif;
-  }
-  .ctx-item:last-child { border-bottom: none; }
-  .ctx-item:hover { background: var(--panel-inner); }
-  .ctx-item.danger { color: var(--red); }
-  .ctx-item.danger:hover { background: var(--red-light); }
+  .action-bar-btn:hover { opacity: 0.85; }
+  #action-edit-btn    { background: var(--accent); color: white; }
+  #action-delete-btn  { background: var(--red); color: white; }
+  #action-deselect-btn { background: #444; color: #ccc; }
+  /* hide edit for strokes */
+  #icon-action-bar.is-stroke #action-edit-btn { display: none; }
 </style>
 </head>
 <body>
 
 <div id="header">
-  <h1>EOS SYSTEM // TACTICAL OVERLAY</h1>
+  <h1>EOS FRONTIER // TACTICAL OVERLAY</h1>
   <div class="sep"></div>
   <button id="clear-btn">CLEAR ALL</button>
 </div>
@@ -418,14 +227,11 @@
   <div id="map-container">
     <div id="map-viewport">
       <img id="base-img" src="Eos_EE_Map.png" alt="EOS Map" draggable="false">
-      <canvas id="draw-canvas"></canvas>
       <svg id="overlay-svg"></svg>
     </div>
   </div>
 
   <div id="sidebar">
-
-    <!-- ZOOM -->
     <div class="tool-section">
       <div class="section-label">Zoom</div>
       <div class="zoom-row">
@@ -436,25 +242,16 @@
       <div id="zoom-label">100%</div>
     </div>
 
-    <!-- TOOLS -->
     <div class="tool-section">
       <div class="section-label">Tool</div>
-      <button class="tool-btn active" data-tool="draw" id="tool-draw">
-        <span class="icon">✏️</span> Draw
-      </button>
-      <button class="tool-btn" data-tool="pan" id="tool-pan">
-        <span class="icon">✋</span> Pan
-      </button>
-      <button class="tool-btn" data-tool="ship" id="tool-ship">
-        <span class="icon">▲</span> Ship
-      </button>
-      <button class="tool-btn" data-tool="marker" id="tool-marker">
-        <span class="icon">◆</span> Marker
-      </button>
+      <button class="tool-btn active" data-tool="draw"><span class="icon">✏️</span> Draw</button>
+      <button class="tool-btn" data-tool="pan"><span class="icon">✋</span> Pan</button>
+      <button class="tool-btn" data-tool="ship"><span class="icon">▲</span> Ship</button>
+      <button class="tool-btn" data-tool="marker"><span class="icon">◆</span> Marker</button>
+      <button class="tool-btn delete-btn" data-tool="delete"><span class="icon">🗑</span> Delete</button>
       <button id="undo-btn">↩ Undo</button>
     </div>
 
-    <!-- DRAW OPTIONS -->
     <div class="tool-section" id="draw-options">
       <div class="section-label">Draw Color</div>
       <div class="color-row">
@@ -472,7 +269,6 @@
       </div>
     </div>
 
-    <!-- SHIP OPTIONS -->
     <div class="tool-section" id="ship-options" style="display:none">
       <div class="section-label">Ship Color</div>
       <div class="ship-color-row">
@@ -492,387 +288,565 @@
         <button class="ship-name-btn" data-name="SON Kukri">SON Kukri</button>
         <button class="ship-name-btn" data-name="SON Scimitar">SON Scimitar</button>
         <button class="ship-name-btn hostile" data-name="Hostile">⚠ Hostile</button>
+        <button class="ship-name-btn custom-btn" id="custom-sidebar-btn" data-name="__custom__">✎ Custom…</button>
       </div>
     </div>
-
   </div>
 </div>
 
-<!-- Name picker modal (for touchscreen placement) -->
-<div id="name-modal">
-  <div id="name-modal-inner">
-    <h2>SELECT VESSEL</h2>
-    <div id="modal-ship-list"></div>
-    <button id="modal-cancel">Cancel</button>
+<!-- ACTION BAR -->
+<div id="icon-action-bar">
+  <span id="action-bar-label">—</span>
+  <button class="action-bar-btn" id="action-edit-btn">✎ Edit</button>
+  <button class="action-bar-btn" id="action-delete-btn">🗑 Delete</button>
+  <button class="action-bar-btn" id="action-deselect-btn">✕</button>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-backdrop" id="edit-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Edit Label</span>
+      <button class="modal-close" id="edit-modal-close">✕</button>
+    </div>
+    <input class="modal-input-field" id="edit-input" type="text" placeholder="Enter name…" autocomplete="off" autocorrect="off">
+    <button class="modal-confirm-btn" id="edit-confirm-btn">Apply</button>
   </div>
 </div>
 
-<!-- Context menu -->
-<div id="ctx-menu">
-  <div class="ctx-item" id="ctx-delete">🗑 Delete</div>
+<!-- CUSTOM NAME MODAL -->
+<div class="modal-backdrop" id="custom-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Custom Name</span>
+      <button class="modal-close" id="custom-modal-close">✕</button>
+    </div>
+    <input class="modal-input-field" id="custom-input" type="text" placeholder="Enter vessel name…" autocomplete="off" autocorrect="off">
+    <button class="modal-confirm-btn" id="custom-confirm-btn">Set Name</button>
+  </div>
 </div>
 
 <script>
-const IMG_SRC = 'Eos_EE_Map.png';
-
-// State
-let scale = 1;
-let panX = 0, panY = 0;
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let scale = 1, panX = 0, panY = 0;
 let tool = 'draw';
-let drawColor = '#2563eb';
-let brushSize = 4;
-let shipColor = 'red';
-let shipName = 'DSV Madayag';
+let drawColor = '#2563eb', brushSize = 4;
+let shipColor = 'red', shipName = 'DSV Madayag', customShipName = '';
+let selectedId = null;
+
+// history: ordered array of { id, kind:'stroke'|'icon' }
+// objects: map of id → { kind, el, ... }
+let history = [];
+let objects = {};
+let idCounter = 0;
+
+// Interaction state
+let isPanning = false, panStart = null, panStartPos = null;
+let lastPinchDist = null;
+const activePointers = {};
+
+// Drawing state
 let isDrawing = false;
-let lastPt = null;
-let isPanning = false;
-let panStart = null;
-let panStartPos = null;
+let currentPathEl = null;
+let currentPathD = '';
+let currentStrokeId = null;
 
-// Icons and strokes for undo
-let strokes = []; // each: { type:'stroke', imageData }
-let icons = [];   // each: { id, type:'ship'|'marker', x, y, color, name, el }
-let iconIdCounter = 0;
+// Drag state
+let isDragging = false;
+let dragId = null;
+let dragStartImg = null;   // image-space pointer position at drag start
+let dragStartObj = null;   // object's stored position at drag start
+let dragMoved = false;
 
-// Pending ship placement (touch: pick name then place)
-let pendingPlacePos = null;
+// ═══════════════════════════════════════
+// DOM
+// ═══════════════════════════════════════
+const mapContainer  = document.getElementById('map-container');
+const viewport      = document.getElementById('map-viewport');
+const baseImg       = document.getElementById('base-img');
+const svgEl         = document.getElementById('overlay-svg');
+const actionBar     = document.getElementById('icon-action-bar');
+const actionLabel   = document.getElementById('action-bar-label');
+const editModal     = document.getElementById('edit-modal');
+const editInput     = document.getElementById('edit-input');
+const customModal   = document.getElementById('custom-modal');
+const customInput   = document.getElementById('custom-input');
 
-const mapContainer = document.getElementById('map-container');
-const viewport = document.getElementById('map-viewport');
-const baseImg = document.getElementById('base-img');
-const drawCanvas = document.getElementById('draw-canvas');
-const ctx = drawCanvas.getContext('2d');
-const svg = document.getElementById('overlay-svg');
-const nameModal = document.getElementById('name-modal');
-const ctxMenu = document.getElementById('ctx-menu');
-
+// ═══════════════════════════════════════
+// IMAGE + TRANSFORM
+// ═══════════════════════════════════════
 let imgW = 0, imgH = 0;
-
 baseImg.onload = () => {
-  imgW = baseImg.naturalWidth;
-  imgH = baseImg.naturalHeight;
-  drawCanvas.width = imgW;
-  drawCanvas.height = imgH;
-  svg.setAttribute('width', imgW);
-  svg.setAttribute('height', imgH);
+  imgW = baseImg.naturalWidth; imgH = baseImg.naturalHeight;
+  svgEl.setAttribute('width', imgW);
+  svgEl.setAttribute('height', imgH);
   fitToScreen();
 };
 if (baseImg.complete) baseImg.onload();
 
 function fitToScreen() {
-  const cw = mapContainer.clientWidth;
-  const ch = mapContainer.clientHeight;
-  const scaleX = cw / imgW;
-  const scaleY = ch / imgH;
-  scale = Math.min(scaleX, scaleY) * 0.95;
+  const cw = mapContainer.clientWidth, ch = mapContainer.clientHeight;
+  scale = Math.min(cw / imgW, ch / imgH) * 0.95;
   panX = (cw - imgW * scale) / 2;
   panY = (ch - imgH * scale) / 2;
   applyTransform();
 }
-
 function applyTransform() {
-  viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  viewport.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
   document.getElementById('zoom-label').textContent = Math.round(scale * 100) + '%';
 }
+function zoomAt(factor, cx, cy) {
+  cx = cx ?? mapContainer.clientWidth / 2;
+  cy = cy ?? mapContainer.clientHeight / 2;
+  const ns = Math.min(Math.max(scale * factor, 0.1), 8);
+  panX = cx - (cx - panX) * (ns / scale);
+  panY = cy - (cy - panY) * (ns / scale);
+  scale = ns;
+  applyTransform();
+}
+function screenToImage(sx, sy) {
+  const r = mapContainer.getBoundingClientRect();
+  return { x: (sx - r.left - panX) / scale, y: (sy - r.top - panY) / scale };
+}
 
-// Zoom buttons
-document.getElementById('zoom-in').addEventListener('click', () => { zoomBy(1.25); });
-document.getElementById('zoom-out').addEventListener('click', () => { zoomBy(0.8); });
+document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.25));
+document.getElementById('zoom-out').addEventListener('click', () => zoomAt(0.8));
 document.getElementById('zoom-fit').addEventListener('click', fitToScreen);
-
-function zoomBy(factor) {
-  const cw = mapContainer.clientWidth;
-  const ch = mapContainer.clientHeight;
-  const cx = cw / 2, cy = ch / 2;
-  const newScale = Math.min(Math.max(scale * factor, 0.1), 8);
-  panX = cx - (cx - panX) * (newScale / scale);
-  panY = cy - (cy - panY) * (newScale / scale);
-  scale = newScale;
-  applyTransform();
-}
-
-// Pinch zoom
-let lastPinchDist = null;
-let lastPinchMid = null;
-
-function getTouchDist(t) {
-  const dx = t[0].clientX - t[1].clientX;
-  const dy = t[0].clientY - t[1].clientY;
-  return Math.sqrt(dx*dx+dy*dy);
-}
-function getTouchMid(t) {
-  return { x: (t[0].clientX + t[1].clientX)/2, y: (t[0].clientY + t[1].clientY)/2 };
-}
-
-// Mouse wheel zoom
-mapContainer.addEventListener('wheel', (e) => {
+mapContainer.addEventListener('wheel', e => {
   e.preventDefault();
-  const rect = mapContainer.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  const factor = e.deltaY < 0 ? 1.1 : 0.9;
-  const newScale = Math.min(Math.max(scale * factor, 0.1), 8);
-  panX = mx - (mx - panX) * (newScale / scale);
-  panY = my - (my - panY) * (newScale / scale);
-  scale = newScale;
-  applyTransform();
+  const r = mapContainer.getBoundingClientRect();
+  zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.clientX - r.left, e.clientY - r.top);
 }, { passive: false });
 
-// Tool buttons
+// ═══════════════════════════════════════
+// TOOL / SIDEBAR CONTROLS
+// ═══════════════════════════════════════
 document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
   btn.addEventListener('click', () => {
     tool = btn.dataset.tool;
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('draw-options').style.display = tool === 'draw' ? '' : 'none';
-    document.getElementById('ship-options').style.display = tool === 'ship' ? '' : 'none';
+    document.getElementById('draw-options').style.display  = tool === 'draw'   ? '' : 'none';
+    document.getElementById('ship-options').style.display  = tool === 'ship'   ? '' : 'none';
     mapContainer.style.cursor = tool === 'pan' ? 'grab' : 'crosshair';
+    if (tool === 'draw' || tool === 'pan') deselectObject();
   });
 });
 
-// Color swatches
 document.querySelectorAll('.color-swatch').forEach(s => {
   s.addEventListener('click', () => {
     document.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('active'));
-    s.classList.add('active');
-    drawColor = s.dataset.color;
+    s.classList.add('active'); drawColor = s.dataset.color;
   });
 });
 
-// Brush size
 const brushInput = document.getElementById('brush-size');
-const brushVal = document.getElementById('brush-size-val');
-brushInput.addEventListener('input', () => {
-  brushSize = parseInt(brushInput.value);
-  brushVal.textContent = brushSize;
-});
+const brushValEl = document.getElementById('brush-size-val');
+brushInput.addEventListener('input', () => { brushSize = +brushInput.value; brushValEl.textContent = brushSize; });
 
-// Ship color
 document.querySelectorAll('.ship-color-opt').forEach(opt => {
   opt.addEventListener('click', () => {
     document.querySelectorAll('.ship-color-opt').forEach(x => x.classList.remove('active'));
-    opt.classList.add('active');
-    shipColor = opt.dataset.shipColor;
+    opt.classList.add('active'); shipColor = opt.dataset.shipColor;
   });
 });
 
-// Ship name buttons
 document.querySelectorAll('.ship-name-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    if (btn.dataset.name === '__custom__') { openCustomModal(); return; }
     document.querySelectorAll('.ship-name-btn').forEach(x => x.classList.remove('selected'));
-    btn.classList.add('selected');
-    shipName = btn.dataset.name;
+    btn.classList.add('selected'); shipName = btn.dataset.name;
   });
 });
 
-// Convert screen coords to image coords
-function screenToImage(sx, sy) {
-  const rect = mapContainer.getBoundingClientRect();
-  return {
-    x: (sx - rect.left - panX) / scale,
-    y: (sy - rect.top - panY) / scale
-  };
+// ═══════════════════════════════════════
+// CUSTOM NAME MODAL
+// ═══════════════════════════════════════
+let customModalCb = null;
+function openCustomModal(cb) {
+  customInput.value = customShipName || '';
+  customModal.classList.add('open');
+  customModalCb = cb || null;
+  setTimeout(() => customInput.focus(), 120);
+}
+document.getElementById('custom-modal-close').addEventListener('click', () => customModal.classList.remove('open'));
+customInput.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('custom-confirm-btn').click(); });
+document.getElementById('custom-confirm-btn').addEventListener('click', () => {
+  const val = customInput.value.trim(); if (!val) return;
+  customShipName = val; customModal.classList.remove('open');
+  if (customModalCb) { customModalCb(val); customModalCb = null; }
+  else {
+    document.querySelectorAll('.ship-name-btn').forEach(x => x.classList.remove('selected'));
+    const cb = document.getElementById('custom-sidebar-btn');
+    cb.classList.add('selected'); cb.textContent = `✎ ${val}`; shipName = val;
+  }
+});
+
+// ═══════════════════════════════════════
+// OBJECT SYSTEM
+// ═══════════════════════════════════════
+const SHIP_COLORS = { red: '#dc2626', green: '#16a34a', grey: '#5a6472' };
+
+function newId() { return ++idCounter; }
+
+function registerObject(id, kind, el, data) {
+  objects[id] = { id, kind, el, ...data };
+  history.push(id);
 }
 
-// DRAWING
-function startDraw(pt) {
-  isDrawing = true;
-  ctx.beginPath();
-  ctx.strokeStyle = drawColor;
-  ctx.lineWidth = brushSize;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.moveTo(pt.x, pt.y);
-  lastPt = pt;
-}
-function continueDraw(pt) {
-  if (!isDrawing) return;
-  ctx.lineTo(pt.x, pt.y);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(pt.x, pt.y);
-  lastPt = pt;
-}
-function endDraw() {
-  if (!isDrawing) return;
-  isDrawing = false;
-  ctx.beginPath();
-  // Save stroke as imageData for undo
-  strokes.push({ type: 'stroke', imageData: ctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height) });
+function removeObject(id) {
+  const obj = objects[id];
+  if (!obj) return;
+  obj.el.remove();
+  delete objects[id];
+  history = history.filter(i => i !== id);
+  if (selectedId === id) { selectedId = null; actionBar.classList.remove('open'); }
 }
 
-// SHIP / MARKER PLACEMENT
-const SHIP_COLORS = {
-  red:   '#dc2626',
-  green: '#16a34a',
-  grey:  '#5a6472'
-};
+// ─── STROKE ───
+function createStroke(color, width) {
+  const id = newId();
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', color);
+  path.setAttribute('stroke-width', width);
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  // wider invisible hit area
+  path.style.cursor = 'pointer';
 
-function placeIcon(imgX, imgY, type, name, color) {
-  const id = ++iconIdCounter;
-  const isHostile = name === 'Hostile';
-  const colHex = type === 'marker' ? '#ca8a04' : (SHIP_COLORS[color] || '#dc2626');
+  // transparent wider copy for easier touch hit
+  const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  hit.setAttribute('fill', 'none');
+  hit.setAttribute('stroke', 'transparent');
+  hit.setAttribute('stroke-width', Math.max(width + 16, 20));
+  hit.setAttribute('stroke-linecap', 'round');
+  hit.style.cursor = 'pointer';
 
-  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('data-id', id);
-  g.style.cursor = 'pointer';
+  g.setAttribute('data-kind', 'stroke');
+  g.appendChild(hit);
+  g.appendChild(path);
+  svgEl.appendChild(g);
+
+  registerObject(id, 'stroke', g, { pathEl: path, hitEl: hit, d: '' });
+  attachObjectEvents(g, id);
+  return id;
+}
+
+function appendStrokePoint(id, x, y) {
+  const obj = objects[id]; if (!obj) return;
+  obj.d += obj.d === '' ? `M${x},${y}` : ` L${x},${y}`;
+  obj.pathEl.setAttribute('d', obj.d);
+  obj.hitEl.setAttribute('d', obj.d);
+}
+
+// ─── ICON ───
+function createIcon(imgX, imgY, type, name, color) {
+  const id = newId();
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('data-id', id);
+  g.setAttribute('data-kind', 'icon');
+  g.style.cursor = 'grab';
+  svgEl.appendChild(g);
+
+  const data = { type, name, color, x: imgX, y: imgY };
+  registerObject(id, 'icon', g, data);
+  renderIconShape(id);
+  attachObjectEvents(g, id);
+  return id;
+}
+
+function renderIconShape(id) {
+  const obj = objects[id]; if (!obj) return;
+  const g = obj.el;
+  // Clear children except selection ring
+  Array.from(g.children).forEach(c => { if (!c.dataset.sel) c.remove(); });
+
+  const { x, y, type, name, color } = obj;
+  const isHostile = name === 'Hostile';
+  const col = type === 'marker' ? '#ca8a04' : (SHIP_COLORS[color] || '#dc2626');
 
   if (type === 'ship') {
-    // Triangle
-    const size = 14;
-    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    const pts = `${imgX},${imgY - size} ${imgX - size*0.7},${imgY + size*0.5} ${imgX + size*0.7},${imgY + size*0.5}`;
-    poly.setAttribute('points', pts);
-    poly.setAttribute('fill', colHex);
-    poly.setAttribute('stroke', '#000');
-    poly.setAttribute('stroke-width', '1.5');
+    const sz = 14;
+    const poly = svgNS('polygon');
+    poly.setAttribute('points', `${x},${y-sz} ${x-sz*0.7},${y+sz*0.5} ${x+sz*0.7},${y+sz*0.5}`);
+    poly.setAttribute('fill', col); poly.setAttribute('stroke', '#000'); poly.setAttribute('stroke-width', '1.5');
     g.appendChild(poly);
+
+    // Hit area (larger invisible circle)
+    const hit = svgNS('circle');
+    hit.setAttribute('cx', x); hit.setAttribute('cy', y); hit.setAttribute('r', 22);
+    hit.setAttribute('fill', 'transparent');
+    g.appendChild(hit);
 
     if (name) {
-      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
-      txt.setAttribute('x', imgX);
-      txt.setAttribute('y', imgY + size + 13);
-      txt.setAttribute('text-anchor', 'middle');
-      txt.setAttribute('font-family', 'DM Mono, monospace');
-      txt.setAttribute('font-size', '12');
-      txt.setAttribute('fill', isHostile ? '#8b1a1a' : colHex);
-      txt.setAttribute('stroke', '#000');
-      txt.setAttribute('stroke-width', '3');
-      txt.setAttribute('paint-order', 'stroke');
-      txt.textContent = name;
-      g.appendChild(txt);
+      const bg = svgNS('text');
+      setTxtAttrs(bg, x, y + sz + 14, col, true, isHostile);
+      bg.textContent = name; g.appendChild(bg);
+      const fg = svgNS('text');
+      setTxtAttrs(fg, x, y + sz + 14, col, false, isHostile);
+      fg.textContent = name; g.appendChild(fg);
     }
   } else {
-    // Diamond marker
-    const size = 10;
-    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    const pts = `${imgX},${imgY-size} ${imgX+size},${imgY} ${imgX},${imgY+size} ${imgX-size},${imgY}`;
-    poly.setAttribute('points', pts);
-    poly.setAttribute('fill', colHex);
-    poly.setAttribute('fill-opacity', '0.7');
-    poly.setAttribute('stroke', colHex);
-    poly.setAttribute('stroke-width', '1.5');
+    const sz = 10;
+    const poly = svgNS('polygon');
+    poly.setAttribute('points', `${x},${y-sz} ${x+sz},${y} ${x},${y+sz} ${x-sz},${y}`);
+    poly.setAttribute('fill', col); poly.setAttribute('fill-opacity', '0.7');
+    poly.setAttribute('stroke', col); poly.setAttribute('stroke-width', '1.5');
     g.appendChild(poly);
 
-    // Cross
-    const line1 = document.createElementNS('http://www.w3.org/2000/svg','line');
-    line1.setAttribute('x1', imgX - size*0.5); line1.setAttribute('y1', imgY);
-    line1.setAttribute('x2', imgX + size*0.5); line1.setAttribute('y2', imgY);
-    line1.setAttribute('stroke', '#000'); line1.setAttribute('stroke-width', '1.5');
-    g.appendChild(line1);
-    const line2 = document.createElementNS('http://www.w3.org/2000/svg','line');
-    line2.setAttribute('x1', imgX); line2.setAttribute('y1', imgY - size*0.5);
-    line2.setAttribute('x2', imgX); line2.setAttribute('y2', imgY + size*0.5);
-    line2.setAttribute('stroke', '#000'); line2.setAttribute('stroke-width', '1.5');
-    g.appendChild(line2);
+    const hit = svgNS('circle');
+    hit.setAttribute('cx', x); hit.setAttribute('cy', y); hit.setAttribute('r', 20);
+    hit.setAttribute('fill', 'transparent');
+    g.appendChild(hit);
+
+    [[x-sz*.5,y,x+sz*.5,y],[x,y-sz*.5,x,y+sz*.5]].forEach(([x1,y1,x2,y2]) => {
+      const ln = svgNS('line');
+      ln.setAttribute('x1',x1);ln.setAttribute('y1',y1);ln.setAttribute('x2',x2);ln.setAttribute('y2',y2);
+      ln.setAttribute('stroke','#000');ln.setAttribute('stroke-width','1.5');
+      g.appendChild(ln);
+    });
   }
+}
 
-  // Long-press / right-click to delete
-  let pressTimer = null;
-  const showCtx = (clientX, clientY) => {
-    ctxMenu.style.left = clientX + 'px';
-    ctxMenu.style.top = clientY + 'px';
-    ctxMenu.classList.add('open');
-    document.getElementById('ctx-delete').onclick = () => {
-      removeIcon(id);
-      ctxMenu.classList.remove('open');
-    };
-  };
+function svgNS(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+function setTxtAttrs(el, x, y, col, isStroke, isHostile) {
+  el.setAttribute('x', x); el.setAttribute('y', y);
+  el.setAttribute('text-anchor', 'middle');
+  el.setAttribute('font-family', 'DM Mono, monospace');
+  el.setAttribute('font-size', '12');
+  if (isStroke) {
+    el.setAttribute('fill', 'none'); el.setAttribute('stroke', '#000');
+    el.setAttribute('stroke-width', '3'); el.setAttribute('paint-order', 'stroke');
+  } else {
+    el.setAttribute('fill', isHostile ? '#8b1a1a' : col);
+  }
+}
 
-  g.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
+// Move icon to new image-space position
+function moveIcon(id, newX, newY) {
+  const obj = objects[id]; if (!obj || obj.kind !== 'icon') return;
+  obj.x = newX; obj.y = newY;
+  renderIconShape(id);
+  if (selectedId === id) restoreSelectionRing(id);
+}
+
+// Translate an entire stroke by dx, dy (image-space)
+function moveStroke(id, dx, dy) {
+  const obj = objects[id]; if (!obj || obj.kind !== 'stroke') return;
+  // Parse and shift all coordinates in the d string
+  obj.d = obj.d.replace(/(-?\d+(\.\d+)?),(-?\d+(\.\d+)?)/g, (_, nx, _2, ny) => {
+    return `${parseFloat(nx)+dx},${parseFloat(ny)+dy}`;
+  });
+  obj.pathEl.setAttribute('d', obj.d);
+  obj.hitEl.setAttribute('d', obj.d);
+}
+
+// ═══════════════════════════════════════
+// SELECTION
+// ═══════════════════════════════════════
+function selectObject(id) {
+  if (selectedId === id) return;
+  deselectObject();
+  selectedId = id;
+  const obj = objects[id]; if (!obj) return;
+  addSelectionRing(obj);
+  actionLabel.textContent = obj.kind === 'stroke' ? 'Drawing' : (obj.name || 'Marker');
+  actionBar.classList.toggle('is-stroke', obj.kind === 'stroke');
+  actionBar.classList.add('open');
+}
+
+function deselectObject() {
+  if (selectedId !== null) {
+    const obj = objects[selectedId];
+    if (obj) removeSelectionRing(obj);
+  }
+  selectedId = null;
+  actionBar.classList.remove('open');
+}
+
+function addSelectionRing(obj) {
+  removeSelectionRing(obj);
+  if (obj.kind === 'icon') {
+    const ring = svgNS('circle');
+    ring.setAttribute('cx', obj.x); ring.setAttribute('cy', obj.y); ring.setAttribute('r', 22);
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', '#f59e0b'); ring.setAttribute('stroke-width', '2');
+    ring.setAttribute('stroke-dasharray', '5 3');
+    ring.dataset.sel = 'true';
+    ring.style.pointerEvents = 'none';
+    obj.el.insertBefore(ring, obj.el.firstChild);
+  } else {
+    // For strokes: highlight by thickening
+    obj.pathEl.setAttribute('data-orig-opacity', obj.pathEl.getAttribute('stroke-opacity') || '1');
+    obj.pathEl.setAttribute('stroke-opacity', '1');
+    obj.pathEl.setAttribute('filter', 'drop-shadow(0 0 3px #f59e0b)');
+  }
+}
+
+function removeSelectionRing(obj) {
+  if (obj.kind === 'icon') {
+    const ring = obj.el.querySelector('[data-sel]');
+    if (ring) ring.remove();
+  } else {
+    obj.pathEl.removeAttribute('filter');
+  }
+}
+
+function restoreSelectionRing(id) {
+  const obj = objects[id]; if (!obj) return;
+  removeSelectionRing(obj);
+  addSelectionRing(obj);
+}
+
+// ═══════════════════════════════════════
+// OBJECT EVENTS (select / drag / delete)
+// ═══════════════════════════════════════
+function attachObjectEvents(g, id) {
+  g.addEventListener('pointerdown', e => {
     e.stopPropagation();
-    showCtx(e.clientX, e.clientY);
+
+    if (tool === 'delete') {
+      e.preventDefault();
+      removeObject(id);
+      return;
+    }
+
+    e.preventDefault();
+    // Start potential drag — we disambiguate on move
+    isDragging = true;
+    dragMoved = false;
+    dragId = id;
+    const pt = screenToImage(e.clientX, e.clientY);
+    dragStartImg = pt;
+    const obj = objects[id];
+    if (obj.kind === 'icon') {
+      dragStartObj = { x: obj.x, y: obj.y };
+    } else {
+      dragStartObj = { d: obj.d };
+    }
+    g.setPointerCapture(e.pointerId);
   });
 
-  g.addEventListener('touchstart', (e) => {
-    pressTimer = setTimeout(() => {
-      const t = e.touches[0];
-      showCtx(t.clientX, t.clientY);
-    }, 600);
-  }, { passive: true });
-  g.addEventListener('touchend', () => clearTimeout(pressTimer), { passive: true });
-  g.addEventListener('touchmove', () => clearTimeout(pressTimer), { passive: true });
+  g.addEventListener('pointermove', e => {
+    if (!isDragging || dragId !== id) return;
+    e.stopPropagation();
+    const pt = screenToImage(e.clientX, e.clientY);
+    const dx = pt.x - dragStartImg.x;
+    const dy = pt.y - dragStartImg.y;
+    if (!dragMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+    dragMoved = true;
 
-  svg.appendChild(g);
-
-  const iconObj = { id, type, x: imgX, y: imgY, color, name, el: g };
-  icons.push(iconObj);
-  return iconObj;
-}
-
-function removeIcon(id) {
-  const idx = icons.findIndex(i => i.id === id);
-  if (idx === -1) return;
-  icons[idx].el.remove();
-  icons.splice(idx, 1);
-}
-
-// Undo
-document.getElementById('undo-btn').addEventListener('click', () => {
-  // Undo last stroke or last icon
-  // Figure out which came last
-  const lastIcon = icons[icons.length - 1];
-  const lastStroke = strokes[strokes.length - 1];
-
-  if (!lastIcon && !lastStroke) return;
-
-  // If only one type exists, undo that
-  // Since we don't have timestamps easily, undo icons first if any
-  if (lastIcon) {
-    removeIcon(lastIcon.id);
-  } else if (lastStroke) {
-    strokes.pop();
-    if (strokes.length > 0) {
-      ctx.putImageData(strokes[strokes.length - 1].imageData, 0, 0);
+    const obj = objects[id];
+    if (obj.kind === 'icon') {
+      moveIcon(id, dragStartObj.x + dx, dragStartObj.y + dy);
     } else {
-      ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      // Reset to original d then shift
+      obj.d = dragStartObj.d;
+      moveStroke(id, dx, dy);
     }
-  }
+    // Keep dragStartObj fixed for relative offset on each move event
+  });
+
+  g.addEventListener('pointerup', e => {
+    if (dragId !== id) return;
+    e.stopPropagation();
+    isDragging = false;
+    if (!dragMoved) {
+      // Treat as tap → select
+      selectObject(id);
+    }
+    dragId = null; dragStartImg = null; dragStartObj = null; dragMoved = false;
+  });
+
+  g.addEventListener('pointercancel', () => {
+    if (dragId === id) {
+      isDragging = false; dragId = null; dragMoved = false;
+    }
+  });
+}
+
+// ═══════════════════════════════════════
+// ACTION BAR
+// ═══════════════════════════════════════
+document.getElementById('action-deselect-btn').addEventListener('click', deselectObject);
+document.getElementById('action-delete-btn').addEventListener('click', () => {
+  if (selectedId !== null) removeObject(selectedId);
+});
+document.getElementById('action-edit-btn').addEventListener('click', () => {
+  if (selectedId === null) return;
+  const obj = objects[selectedId];
+  if (!obj || obj.kind !== 'icon') return;
+  editInput.value = obj.name || '';
+  editModal.classList.add('open');
+  setTimeout(() => editInput.focus(), 120);
 });
 
-// Clear all
+// EDIT MODAL
+document.getElementById('edit-modal-close').addEventListener('click', () => editModal.classList.remove('open'));
+editInput.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('edit-confirm-btn').click(); });
+document.getElementById('edit-confirm-btn').addEventListener('click', () => {
+  if (selectedId === null) return;
+  const obj = objects[selectedId]; if (!obj) return;
+  obj.name = editInput.value.trim();
+  editModal.classList.remove('open');
+  renderIconShape(selectedId);
+  restoreSelectionRing(selectedId);
+  actionLabel.textContent = obj.name || 'Marker';
+});
+
+// Close modals on backdrop tap
+[editModal, customModal].forEach(m => {
+  m.addEventListener('pointerdown', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+// ═══════════════════════════════════════
+// UNDO
+// ═══════════════════════════════════════
+document.getElementById('undo-btn').addEventListener('click', () => {
+  if (history.length === 0) return;
+  const lastId = history[history.length - 1];
+  removeObject(lastId);
+});
+
+// CLEAR ALL
 document.getElementById('clear-btn').addEventListener('click', () => {
   if (!confirm('Clear all annotations?')) return;
-  ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-  strokes = [];
-  [...icons].forEach(i => i.el.remove());
-  icons = [];
+  [...Object.keys(objects)].forEach(id => removeObject(+id));
+  history = []; objects = {};
 });
 
-// Close ctx menu on tap elsewhere
-document.addEventListener('pointerdown', (e) => {
-  if (!ctxMenu.contains(e.target)) ctxMenu.classList.remove('open');
-});
+// ═══════════════════════════════════════
+// POINTER EVENTS (map)
+// ═══════════════════════════════════════
+mapContainer.addEventListener('pointerdown',   onMapDown,   { capture: false });
+mapContainer.addEventListener('pointermove',   onMapMove,   { capture: false });
+mapContainer.addEventListener('pointerup',     onMapUp,     { capture: false });
+mapContainer.addEventListener('pointercancel', onMapUp,     { capture: false });
 
-// ---- POINTER EVENTS ----
+function onMapDown(e) {
+  // Ignore if event came from an SVG object (they handle themselves)
+  if (e.target !== mapContainer && e.target !== baseImg && e.target !== svgEl && e.target.closest('[data-id]')) return;
 
-let activeTouches = [];
-
-mapContainer.addEventListener('pointerdown', onPointerDown);
-mapContainer.addEventListener('pointermove', onPointerMove);
-mapContainer.addEventListener('pointerup', onPointerUp);
-mapContainer.addEventListener('pointercancel', onPointerUp);
-
-// Track for pinch
-const activePointers = {};
-
-function onPointerDown(e) {
   e.preventDefault();
   activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
-  const pointerCount = Object.keys(activePointers).length;
+  const count = Object.keys(activePointers).length;
 
-  if (pointerCount === 2) {
-    // Pinch — stop drawing/panning
-    isDrawing = false;
-    isPanning = false;
-    const pts = Object.values(activePointers);
-    lastPinchDist = getTouchDistFromPts(pts);
-    lastPinchMid = getMidFromPts(pts);
+  if (count === 2) {
+    isDrawing = false; isPanning = false;
+    finishCurrentStroke();
+    lastPinchDist = distPts(Object.values(activePointers));
     return;
   }
 
-  if (tool === 'pan' || (pointerCount === 1 && e.button === 1)) {
+  // Tapping blank area deselects
+  deselectObject();
+
+  if (tool === 'pan' || e.button === 1) {
     isPanning = true;
     panStart = { x: e.clientX, y: e.clientY };
     panStartPos = { x: panX, y: panY };
@@ -880,88 +854,84 @@ function onPointerDown(e) {
     return;
   }
 
-  const imgPt = screenToImage(e.clientX, e.clientY);
+  const pt = screenToImage(e.clientX, e.clientY);
 
   if (tool === 'draw') {
-    // Save current state before stroke
-    strokes.push({ type: 'stroke', imageData: ctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height) });
-    startDraw(imgPt);
+    currentStrokeId = createStroke(drawColor, brushSize);
+    appendStrokePoint(currentStrokeId, pt.x, pt.y);
+    isDrawing = true;
   } else if (tool === 'ship') {
-    placeIcon(imgPt.x, imgPt.y, 'ship', shipName, shipColor);
+    const name = shipName === '__custom__' ? customShipName : shipName;
+    if (shipName === '__custom__' && !customShipName) {
+      openCustomModal(val => createIcon(pt.x, pt.y, 'ship', val, shipColor));
+    } else {
+      createIcon(pt.x, pt.y, 'ship', name, shipColor);
+    }
   } else if (tool === 'marker') {
-    placeIcon(imgPt.x, imgPt.y, 'marker', '', '');
+    createIcon(pt.x, pt.y, 'marker', '', '');
   }
 }
 
-function onPointerMove(e) {
-  e.preventDefault();
+function onMapMove(e) {
+  if (e.target.closest('[data-id]') && (isDragging)) return; // let object handle
   activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
-  const pointerCount = Object.keys(activePointers).length;
+  const pts = Object.values(activePointers);
+  const count = pts.length;
 
-  if (pointerCount === 2) {
-    const pts = Object.values(activePointers);
-    const dist = getTouchDistFromPts(pts);
-    const mid = getMidFromPts(pts);
+  if (count === 2) {
+    const d = distPts(pts);
     if (lastPinchDist !== null) {
-      const factor = dist / lastPinchDist;
-      const rect = mapContainer.getBoundingClientRect();
-      const mx = mid.x - rect.left;
-      const my = mid.y - rect.top;
-      const newScale = Math.min(Math.max(scale * factor, 0.1), 8);
-      panX = mx - (mx - panX) * (newScale / scale);
-      panY = my - (my - panY) * (newScale / scale);
-      scale = newScale;
-      applyTransform();
+      const m = midPts(pts);
+      const r = mapContainer.getBoundingClientRect();
+      zoomAt(d / lastPinchDist, m.x - r.left, m.y - r.top);
     }
-    lastPinchDist = dist;
-    lastPinchMid = mid;
+    lastPinchDist = d;
     return;
   }
 
   if (isPanning) {
     panX = panStartPos.x + (e.clientX - panStart.x);
     panY = panStartPos.y + (e.clientY - panStart.y);
-    applyTransform();
-    return;
+    applyTransform(); return;
   }
 
-  if (tool === 'draw' && isDrawing) {
-    const imgPt = screenToImage(e.clientX, e.clientY);
-    continueDraw(imgPt);
+  if (tool === 'draw' && isDrawing && currentStrokeId !== null) {
+    const pt = screenToImage(e.clientX, e.clientY);
+    appendStrokePoint(currentStrokeId, pt.x, pt.y);
   }
 }
 
-function onPointerUp(e) {
+function onMapUp(e) {
   delete activePointers[e.pointerId];
-  const pointerCount = Object.keys(activePointers).length;
-
-  if (pointerCount < 2) {
-    lastPinchDist = null;
-    lastPinchMid = null;
-  }
+  if (Object.keys(activePointers).length < 2) lastPinchDist = null;
 
   if (isPanning) {
     isPanning = false;
     mapContainer.style.cursor = tool === 'pan' ? 'grab' : 'crosshair';
   }
 
-  if (tool === 'draw') endDraw();
+  if (tool === 'draw' && isDrawing) {
+    finishCurrentStroke();
+  }
 }
 
-function getTouchDistFromPts(pts) {
-  const dx = pts[0].x - pts[1].x;
-  const dy = pts[0].y - pts[1].y;
-  return Math.sqrt(dx*dx+dy*dy);
+function finishCurrentStroke() {
+  isDrawing = false;
+  currentStrokeId = null;
+  currentPathEl = null;
+  currentPathD = '';
 }
-function getMidFromPts(pts) {
+
+// ═══════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════
+function distPts(pts) {
+  const dx = pts[0].x - pts[1].x, dy = pts[0].y - pts[1].y;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+function midPts(pts) {
   return { x: (pts[0].x + pts[1].x)/2, y: (pts[0].y + pts[1].y)/2 };
 }
-
-// Modal cancel
-document.getElementById('modal-cancel').addEventListener('click', () => {
-  nameModal.classList.remove('open');
-  pendingPlacePos = null;
-});
 </script>
 </body>
 </html>

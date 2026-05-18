@@ -23,7 +23,17 @@ class Canvas {
     // Get canvases for background (grid, terrain) and foreground (ships, stations) objects.
     this._backgroundCanvas = $("#canvas-bg");
     this._canvas = $("#canvas-fg");
+    this._tokenOverlay = $("#token-overlay");
+    this._tokenContainer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this._tokenOverlay[0].appendChild(this._tokenContainer);
 
+    // Custom user tokens
+    this._customTokens = [];
+    this._customTokenCounter = 0;
+    this._currentTool = 'pan';
+    this._panActive = false;
+    this._tokenClicked = false;
+    
     // Get the infobox for displaying selected object data.
     this._infobox = $("#infobox");
 
@@ -112,38 +122,77 @@ class Canvas {
     this.update();
   }
 
+  setCurrentTool(tool) {
+    this._currentTool = tool;
+    this._panActive = false; // Stop panning when tool changes
+    this._canvas.css('cursor', tool === 'pan' ? 'grab' : 'crosshair');
+  }
+
+  screenToWorld(clientX, clientY) {
+    const rect = this._canvas[0].getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const worldX = this._view.x + (clientX - rect.left - width / 2) / this._zoomScale;
+    const worldY = this._view.y + (clientY - rect.top - height / 2) / this._zoomScale;
+    return { x: worldX, y: worldY };
+  }
+
   // Record cursor coordinates on click and release, for dragging.
-  _mouseDown (event) {
+  _mouseDown(event) {
+    if (this._currentTool === 'add_token') {
+      const worldPos = this.screenToWorld(event.clientX, event.clientY);
+      this.addToken(worldPos.x, worldPos.y);
+      return;
+    }
+
+    // Default 'pan' tool behavior
     this._firstMouse.x = event.clientX;
     this._firstMouse.y = event.clientY;
     this._lastMouse.x = this._firstMouse.x;
     this._lastMouse.y = this._firstMouse.y;
+    this._panActive = true;
+    this._canvas.css('cursor', 'grabbing');
   }
 
   // Handle the end of click/drag events.
-  _mouseUp (event) {
+  _mouseUp(event) {
+    // If a token was just clicked, its own handler has already dealt with selection.
+    // Prevent the canvas mouseup from overriding it.
+    if (this._tokenClicked) {
+      this._tokenClicked = false;
+      return;
+    }
+
+    if (this._panActive) {
+      this._panActive = false;
+      this._canvas.css('cursor', 'grab');
+    }
+
+    const isDrag = this._lastMouse.x !== this._firstMouse.x || this._lastMouse.y !== this._firstMouse.y;
+
     // Detect a non-drag click by confirming the mouse didn't move since mousedown.
-    if (this._lastMouse.x === this._firstMouse.x && this._lastMouse.y === this._firstMouse.y) {
+    if (!isDrag && this._currentTool === 'pan') {
       // Get mouse position relative to the canvas and check its hit canvas pixel.
       const mousePosition = {
-          "x": event.clientX - this._canvas[0].offsetLeft,
-          "y": event.clientY - this._canvas[0].offsetTop
-        },
-        ctxHit = this._hitCanvas.getContext("2d", {"alpha": false}),
-        pixel = ctxHit.getImageData(mousePosition.x, mousePosition.y, 1, 1).data,
-        // Convert the color to an object ID.
-        id = Canvas.rgbToId(pixel[0], pixel[1], pixel[2]),
-        // Get the current timeline value from the time selector element.
-        time = $("#time_selector").val(),
-        // Get the log entry for the given time.
-        entry = log.getEntriesAtTime(time);
+        "x": event.clientX - this._canvas[0].offsetLeft,
+        "y": event.clientY - this._canvas[0].offsetTop
+      };
+      const ctxHit = this._hitCanvas.getContext("2d", { "alpha": false });
+      const pixel = ctxHit.getImageData(mousePosition.x, mousePosition.y, 1, 1).data;
+      let newSelection = null;
 
-      this._selectedObject = entry[id];
+      const id = Canvas.rgbToId(pixel[0], pixel[1], pixel[2]);
+      if (id > 0) {
+        const time = $("#time_selector").val();
+        const entry = log.getEntriesAtTime(time);
+        newSelection = entry[id];
+      }
+      this._selectedObject = newSelection;
 
       // Confirm whether the selection is valid.
-      if (Canvas.isSelectionValid(this._selectedObject) === true) {
+      if (Canvas.isSelectionValid(this._selectedObject)) {
         // Update the infobox with this object's info for this point in time.
-        this.updateSelectionInfobox(time);
+        this.updateSelectionInfobox();
 
         // If view locking is enabled, point the camera at the selected object.
         if (this.isViewLocked === true) {
@@ -154,12 +203,11 @@ class Canvas {
         this.update();
       } else {
         // Otherwise, hide the infobox if there's no selected object.
+        this._selectedObject = { type: "No selection" };
+        this._infobox.removeClass('centered-infobox');
         this._infobox.hide();
+        this.update();
       }
-    } else {
-      // Otherwise, we're dragging, so update lastMouse.
-      this._lastMouse.x = event.clientX;
-      this._lastMouse.y = event.clientY;
     }
   }
 
@@ -203,6 +251,106 @@ class Canvas {
       this._view.y = positionY;
     } else {
       console.error(`Invalid position values ${positionX}, ${positionY}`);
+    }
+  }
+
+  addToken(worldX, worldY) {
+    const id = 'custom_' + this._customTokenCounter++;
+    const token = {
+      id: id,
+      isCustom: true,
+      type: 'Custom Token',
+      callsign: 'Custom Token ' + (this._customTokenCounter - 1),
+      position: [worldX, worldY],
+      rotation: 0,
+      size: 1.0,
+      faction: 'ICC', // default
+    };
+
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute('data-id', id);
+    g.style.cursor = 'pointer';
+
+    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    poly.setAttribute('points', '0,-400 -280,200 280,200');
+    poly.setAttribute('stroke', '#000');
+    poly.setAttribute('stroke-width', '25');
+    g.appendChild(poly);
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute('y', 550);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-family', "'Big Shoulders', 'Bebas Neue Book', Impact, Arial, sans-serif");
+    text.setAttribute('font-size', '350px');
+    text.setAttribute('stroke', '#000');
+    text.setAttribute('stroke-width', '30');
+    text.setAttribute('paint-order', 'stroke');
+    g.appendChild(text);
+
+    token.element = g;
+    this._customTokens.push(token);
+    this.updateTokenElement(token); // Set initial appearance
+
+    // Drag logic
+    g.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      if (this._currentTool !== 'pan') return;
+
+      this._tokenClicked = true;
+
+      this._selectedObject = token;
+      this.updateSelectionInfobox();
+      this.update();
+
+      const dragStart = this.screenToWorld(e.clientX, e.clientY);
+      const dragStartPos = { x: token.position[0], y: token.position[1] };
+
+      const onPointerMove = (moveEvent) => {
+        const current = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
+        const dx = current.x - dragStart.x;
+        const dy = current.y - dragStart.y;
+        token.position[0] = dragStartPos.x + dx;
+        token.position[1] = dragStartPos.y + dy;
+        this.updateTokenElement(token);
+        this.updateSelectionInfobox();
+      };
+      const onPointerUp = () => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+      };
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+    });
+
+    this._tokenContainer.appendChild(g);
+    this._selectedObject = token;
+    this.updateSelectionInfobox();
+    this.update();
+  }
+
+  updateTokenElement(token) {
+    const g = token.element;
+    const poly = g.querySelector('polygon');
+    const text = g.querySelector('text');
+
+    const factionColor = Canvas.getFactionColor(token.faction, "CC", "FF");
+    poly.setAttribute('fill', factionColor);
+    text.setAttribute('fill', factionColor);
+    text.textContent = token.callsign;
+
+    const transform = `translate(${token.position[0]}, ${token.position[1]}) rotate(${token.rotation}) scale(${token.size})`;
+    g.setAttribute('transform', transform);
+  }
+
+  removeToken(tokenId) {
+    const tokenIndex = this._customTokens.findIndex(t => t.id === tokenId);
+    if (tokenIndex > -1) {
+      this._customTokens[tokenIndex].element.remove();
+      this._customTokens.splice(tokenIndex, 1);
+      this._selectedObject = { type: "No selection" };
+      this._infobox.removeClass('centered-infobox');
+      this._infobox.hide();
+      this.update();
     }
   }
 
@@ -256,16 +404,78 @@ class Canvas {
   // render all elements, update them each tick, and toggle unusued ones instead of rewriting the whole infobox each tick
   updateSelectionInfobox (timeValue = $("#time_selector").val()) {
     // Clear the infobox and don't bother continuing if the selected object isn't valid.
-    if (Canvas.isSelectionValid(this._selectedObject) === false) {
+    if (Canvas.isSelectionValid(this._selectedObject) === false) { // eslint-disable-line
+      this._infobox.removeClass('centered-infobox');
       this._infobox.hide();
       return;
     }
 
-    // Reference the Canvas's selected object.
+    // Handle custom tokens separately
+    if (this._selectedObject.isCustom) {
+      this._infobox.addClass('centered-infobox');
+      const token = this._selectedObject;
+      const infoboxContent = $("#infobox-content");
+      let infoboxContents = "";
+      infoboxContents += `<tr class="ee-infobox-title"><td colspan=2 class="ee-infobox-header">Custom Token</td>`;
+      infoboxContents += `<tr><td class="ee-table-key">Callsign</td><td class="ee-table-value"><input type="text" id="token_callsign" value="${token.callsign}"></td></tr>`;
+      infoboxContents += `<tr><td class="ee-table-key">Faction</td><td class="ee-table-value"><select id="token_faction"></select></td></tr>`;
+      infoboxContents += `<tr><td class="ee-table-key">Position</td><td class="ee-table-value">${token.position[0].toFixed(1)}, ${token.position[1].toFixed(1)}</td></tr>`;
+      infoboxContents += `<tr><td class="ee-table-key">Size</td><td><input class="ee-slider" id="token_size_selector" type="range" min="0.2" max="5" step="0.1" value="${token.size}"></td></tr>`;
+      infoboxContents += `<tr><td class="ee-table-key">Rotation</td><td><input class="ee-slider" id="token_rotation_selector" type="range" min="0" max="359" step="1" value="${token.rotation}"></td></tr>`;
+      infoboxContents += `<tr><td colspan="2" style="text-align: center; padding-top: 10px;"><button class="ee-button" id="save_token">Save</button> <button class="ee-button" id="delete_token">Delete</button></td></tr>`;
+
+      this._infobox.show();
+      infoboxContent.html(infoboxContents);
+
+      // Populate faction dropdown
+      const factions = ["ICC", "Aquila", "Dugo", "Ekanesh", "Pendzal", "Sona", "Alien", "Other", "Unknown"];
+      const factionSelect = $("#token_faction");
+      factions.forEach(f => {
+        factionSelect.append($('<option>', { value: f, text: f }));
+      });
+      factionSelect.val(token.faction);
+
+      // Add event handlers for the new controls
+      $("#token_callsign").on("input", (event) => {
+        token.callsign = $(event.target).val();
+        this.updateTokenElement(token);
+      });
+      $("#token_faction").on("change", (event) => {
+        token.faction = $(event.target).val();
+        this.updateTokenElement(token);
+      });
+      $("#token_size_selector").on("input", (event) => {
+        token.size = parseFloat($(event.target).val());
+        this.updateTokenElement(token);
+      });
+      $("#token_rotation_selector").on("input", (event) => {
+        token.rotation = parseInt($(event.target).val(), 10);
+        this.updateTokenElement(token);
+      });
+      $("#save_token").on("click", () => {
+        // Deselect object and hide infobox
+        this._selectedObject = { type: "No selection" };
+        this._infobox.removeClass('centered-infobox');
+        this._infobox.hide();
+        this.update();
+      });
+      $("#delete_token").on("click", () => {
+        this.removeToken(token.id);
+      });
+      return;
+    }
+
+    this._infobox.removeClass('centered-infobox');
     const selectedObject = this._selectedObject;
 
     // Update the selected object for the current time.
     this.updateSelection(timeValue);
+
+    if (!this._selectedObject) {
+      this._infobox.hide();
+      this._infobox.removeClass('centered-infobox');
+      return;
+    }
 
     // Populate the infobox with data.
     const infoboxContent = $("#infobox-content");
@@ -578,21 +788,15 @@ class Canvas {
 
   // Move view on mouse drag.
   _mouseMove (event) {
-    // Don't do anything unless a button's down.
-    if (!event.buttons) {
-      return;
+    if (this._panActive) {
+      this._view.x += (this._lastMouse.x - event.clientX) / this._zoomScale;
+      this._view.y += (this._lastMouse.y - event.clientY) / this._zoomScale;
+      this.update();
     }
-
-    // Translate mouse coordinates to world scale.
-    this._view.x += (this._lastMouse.x - event.clientX) / this._zoomScale;
-    this._view.y += (this._lastMouse.y - event.clientY) / this._zoomScale;
 
     // Update mouse position from event.
     this._lastMouse.x = event.clientX;
     this._lastMouse.y = event.clientY;
-
-    // Update the canvas.
-    this.update();
   }
 
   // Zoom view when using the mouse wheel.
@@ -647,7 +851,7 @@ class Canvas {
     }
 
     // If a valid object is selected and view locking is enabled, lock the viewport on it.
-    if (Canvas.isSelectionValid(this._selectedObject) === true && this.isViewLocked === true) {
+    if (Canvas.isSelectionValid(this._selectedObject) === true && this.isViewLocked === true && !this._selectedObject.isCustom) {
       this.pointCameraAt(this._selectedObject.position[0], this._selectedObject.position[1]);
     }
 
@@ -874,6 +1078,21 @@ class Canvas {
       }
     }
 
+    // Update SVG overlay viewBox to match the canvas view
+    const viewWidth = width / this._zoomScale;
+    const viewHeight = height / this._zoomScale;
+    const viewX = this._view.x - (viewWidth / 2);
+    const viewY = this._view.y - (viewHeight / 2);
+    this._tokenOverlay[0].setAttribute('viewBox', `${viewX} ${viewY} ${viewWidth} ${viewHeight}`);
+
+    // Update selection highlight on SVG tokens
+    this._customTokens.forEach(t => {
+      const isSelected = this._selectedObject && this._selectedObject.id === t.id;
+      const poly = t.element.querySelector('polygon');
+      poly.setAttribute('stroke', isSelected ? '#FFFF00' : '#000000');
+      poly.setAttribute('stroke-width', isSelected ? '50' : '25');
+    });
+
     // Draw the info line showing the scenario time, scale, X/Y coordinates, and sector designation.
     ctx.fillStyle = "#fff";
     ctx.font = "20px 'Big Shoulders', 'Bebas Neue Book', Impact, Arial, sans-serif";
@@ -1046,33 +1265,43 @@ class Canvas {
 
     // Faction colors from factionInfo.lua.
     switch (faction) {
+    case "ICC":
+    case "Human":
     case "Human Navy":
       // human:setGMColor(255, 255, 255)
       return `#${highColor}${highColor}${highColor}`;
+    case "Alien":
     case "Kraylor":
       // kraylor:setGMColor(255, 0, 0)
       return `#${highColor}0000`;
+    case "Other":
+    case "Unknown":
     case "Independent":
       // neutral:setGMColor(128, 128, 128)
       return `#${lowColor}${lowColor}${lowColor}`;
+    case "Dugo":
     case "Arlenians":
       // arlenians:setGMColor(255, 128, 0)
       return `#${highColor}${lowColor}00`;
     case "Exuari":
       // exuari:setGMColor(255, 0, 128)
       return `#${highColor}00${lowColor}`;
+    case "Sona":
     case "Ghosts":
       // GITM:setGMColor(0, 255, 0)
       return `#00${highColor}00`;
     case "Ktlitans":
       // Hive:setGMColor(128, 255, 0)
       return `#${lowColor}${highColor}00`;
+    case "Pendzal":
     case "TSN":
       // TSN:setGMColor(255, 255, 128)
       return `#${highColor}${highColor}${lowColor}`;
+    case "Ekanesh":
     case "USN":
       // USN:setGMColor(255, 128, 255)
       return `#${highColor}${lowColor}${highColor}`;
+    case "Aquila":
     case "CUF":
       // CUF:setGMColor(128, 255, 255)
       return `#${lowColor}${highColor}${highColor}`;
@@ -1353,9 +1582,9 @@ class Canvas {
   }
 
   // Draw a station.
-  drawStation (ctx, positionX, positionY, entry, overrideFillColor = "#FF00FF") {
+  drawStation(ctx, positionX, positionY, entry, overrideFillColor = "#FF00FF") {
     // Get its faction color.
-    const highColorMagnitude = "FF",
+    const highColorMagnitude = "FF", // eslint-disable-line
       lowColorMagnitude = "55";
 
     // Draw a shape and scale it by zoom and station type.
@@ -1395,9 +1624,9 @@ class Canvas {
   }
 
   // Draw a player or CPU ship.
-  drawShip (ctx, positionX, positionY, entry, overrideFillColor = "#FF00FF") {
-    const sizeModifier = 4;
+  drawShip(ctx, positionX, positionY, entry, overrideFillColor = "#FF00FF") {
     // Initialize color brightness.
+    const sizeModifier = 4;
     let highColorMagnitude = "CC",
       lowColorMagnitude = "66",
       // Set a default faction color.
