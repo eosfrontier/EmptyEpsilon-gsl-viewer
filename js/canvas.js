@@ -294,29 +294,51 @@ class Canvas {
     // Drag logic
     g.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
+      e.preventDefault(); // Prevent default browser actions like text selection
       if (this._currentTool !== 'pan') return;
 
       this._tokenClicked = true;
 
-      this._selectedObject = token;
-      this.updateSelectionInfobox();
-      this.update();
+      let dragMoved = false;
+      const dragThreshold = 3;
+      const startClient = { x: e.clientX, y: e.clientY };
 
-      const dragStart = this.screenToWorld(e.clientX, e.clientY);
+      const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
       const dragStartPos = { x: token.position[0], y: token.position[1] };
 
       const onPointerMove = (moveEvent) => {
-        const current = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
-        const dx = current.x - dragStart.x;
-        const dy = current.y - dragStart.y;
-        token.position[0] = dragStartPos.x + dx;
-        token.position[1] = dragStartPos.y + dy;
-        this.updateTokenElement(token);
-        this.updateSelectionInfobox();
+        const dx = moveEvent.clientX - startClient.x;
+        const dy = moveEvent.clientY - startClient.y;
+
+        if (!dragMoved && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
+          dragMoved = true;
+          // A drag has started. If a token is selected, deselect it to hide the infobox.
+          if (this._selectedObject && this._selectedObject.isCustom) {
+            this._selectedObject = { type: "No selection" };
+            this._infobox.removeClass('centered-infobox').hide();
+            this.update();
+          }
+        }
+
+        if (dragMoved) {
+          const currentWorld = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
+          const dWorldX = currentWorld.x - dragStartWorld.x;
+          const dWorldY = currentWorld.y - dragStartWorld.y;
+          token.position[0] = dragStartPos.x + dWorldX;
+          token.position[1] = dragStartPos.y + dWorldY;
+          this.updateTokenElement(token);
+        }
       };
-      const onPointerUp = () => {
+      const onPointerUp = (upEvent) => {
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerUp);
+
+        if (!dragMoved) {
+          // This was a click.
+          this._selectedObject = token;
+          this.updateSelectionInfobox();
+          this.update();
+        }
       };
       document.addEventListener('pointermove', onPointerMove);
       document.addEventListener('pointerup', onPointerUp);

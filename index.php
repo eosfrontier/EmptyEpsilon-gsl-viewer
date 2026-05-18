@@ -19,46 +19,7 @@
     <!-- Lua parser and dAST walker scripts -->
     <script src="js/luaparse.js"></script>
     <script src="js/walker.js"></script>
-    <style>
-      #token-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none; /* Clicks pass through to canvas unless on a token */
-      }
-      #token-overlay > * {
-        pointer-events: all; /* Tokens are clickable */
-      }
-      #tools {
-        position: absolute;
-        top: 100px;
-        left: 10px;
-        z-index: 10;
-        display: flex;
-        flex-direction: column;
-        background: rgba(40, 40, 40, 0.8);
-        border-radius: 5px;
-        padding: 5px;
-      }
-      #infobox.centered-infobox, #infobox {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        right: auto; /* Override default positioning */
-        transform: translate(-50%, -50%);
-        z-index: 20; /* Ensure it's above the toolbar */
-        width: 350px;
-        height: auto;
-        overflow: visible;
-      }
-      #infobox.centered-infobox #infobox-scroll-container, #infobox {
-        height: auto;
-        max-height: none; /* Override default height limit */
-        overflow: visible;
-      }
-    </style>
+
   </head>
 
   <?php
