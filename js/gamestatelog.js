@@ -358,7 +358,16 @@ $().ready(function () {
   });
 
   $("#save_annotations").on("click", function() {
-    canvas.saveAnnotationsToServer();
+    const saveButton = $(this);
+    canvas.saveAnnotationsToServer().then(() => {
+      saveButton.addClass('save-success');
+      setTimeout(() => {
+        saveButton.removeClass('save-success');
+      }, 500);
+    }).catch((error) => {
+      console.error('Error saving annotations:', error);
+      alert('Error: Could not save annotations to the server. ' + error.message);
+    });
   });
 
   // Keyboard shortcuts

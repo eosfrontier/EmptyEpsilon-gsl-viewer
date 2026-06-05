@@ -586,3 +586,8 @@ button#autoplay, button#autoplay_speed, input#time_selector {
   fill-opacity: 0.4;
   cursor: ew-resize;
 }
+
+.ee-button.save-success {
+  background: #228B22; /* Forest Green */
+  border-color: #228B22;
+}

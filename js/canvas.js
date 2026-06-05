@@ -265,7 +265,7 @@ class Canvas {
     const formData = new FormData();
     formData.append('data', JSON.stringify(dataToSave));
 
-    fetch('save_annotations.php', {
+    return fetch('save_annotations.php', {
       method: 'POST',
       body: formData,
     })
@@ -276,10 +276,6 @@ class Canvas {
       } else {
         throw new Error(data.message || 'Unknown error saving annotations.');
       }
-    })
-    .catch((error) => {
-      console.error('Error saving annotations:', error);
-      alert('Error: Could not save annotations to the server. ' + error.message);
     });
   }
 
