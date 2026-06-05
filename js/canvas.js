@@ -657,6 +657,24 @@ class Canvas {
       if (obj) {
         obj.position = lastAction.oldPosition;
       }
+    } else if (lastAction.type === 'move_token') {
+      const obj = this._userObjects[lastAction.id];
+      if (obj) {
+        obj.position = lastAction.oldPosition;
+        this.updateTokenElement(obj);
+      }
+    } else if (lastAction.type === 'move_circle') {
+      const obj = this._userObjects[lastAction.id];
+      if (obj) {
+        obj.center = lastAction.oldCenter;
+        this.updateCircleElement(obj);
+      }
+    } else if (lastAction.type === 'resize_circle') {
+      const obj = this._userObjects[lastAction.id];
+      if (obj) {
+        obj.radius = lastAction.oldRadius;
+        this.updateCircleElement(obj);
+      }
     }
     this.update();
   }
@@ -745,6 +763,7 @@ class Canvas {
       e.stopPropagation();
       e.preventDefault();
       this._isResizingCircle = true;
+      const oldRadius = circle.radius;
 
       const onPointerMove = (moveEvent) => {
         const worldPos = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
@@ -759,6 +778,11 @@ class Canvas {
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerUp);
         this._isResizingCircle = false;
+        this._userHistory.push({
+          type: 'resize_circle',
+          id: circle.id,
+          oldRadius: oldRadius,
+        });
         this.saveAnnotationsToServer();
       };
 
@@ -785,6 +809,7 @@ class Canvas {
 
       const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
       const dragStartCenter = { x: circle.center[0], y: circle.center[1] };
+      const oldCenter = [...circle.center];
 
       const onPointerMove = (moveEvent) => {
         const dx = moveEvent.clientX - startClient.x;
@@ -813,6 +838,11 @@ class Canvas {
         document.removeEventListener('pointerup', onPointerUp);
 
         if (dragMoved) {
+          this._userHistory.push({
+            type: 'move_circle',
+            id: circle.id,
+            oldCenter: oldCenter,
+          });
           this.saveAnnotationsToServer();
         } else {
           // Click - toggle selection
@@ -847,6 +877,7 @@ class Canvas {
 
       const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
       const dragStartPos = { x: token.position[0], y: token.position[1] };
+      const oldPosition = [...token.position];
 
       const onPointerMove = (moveEvent) => {
         const dx = moveEvent.clientX - startClient.x;
@@ -875,7 +906,14 @@ class Canvas {
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerUp);
 
-        if (!dragMoved) {
+        if (dragMoved) {
+          this._userHistory.push({
+            type: 'move_token',
+            id: token.id,
+            oldPosition: oldPosition,
+          });
+          this.saveAnnotationsToServer();
+        } else {
           // This was a click.
           this._selectedObject = token;
           this.updateSelectionInfobox();
