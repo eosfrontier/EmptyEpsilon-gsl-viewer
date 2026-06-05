@@ -602,7 +602,7 @@ class Canvas {
 
   addUserObject(type, data) {
     const id = 'user_' + this._userObjectCounter++;
-    const obj = { id, type, ...data };
+    const obj = { id, ...data, type };
     this._userObjects[id] = obj;
     this._userHistory.push(id);
     return obj;
