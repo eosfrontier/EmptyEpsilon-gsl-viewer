@@ -334,7 +334,7 @@ $().ready(function () {
     $(this).addClass("ee-button-active");
     currentTool = $(this).data("tool");
     canvas.setCurrentTool(currentTool);
-    if ('draw' === currentTool) {
+    if ('draw' === currentTool || 'draw_circle' === currentTool) {
       $('#draw-options').show();
     } else {
       $('#draw-options').hide();
@@ -368,6 +368,7 @@ $().ready(function () {
   Mousetrap.bind("p", () => $(".tool-button[data-tool='pan']").click());
   Mousetrap.bind("t", () => $(".tool-button[data-tool='add_token']").click());
   Mousetrap.bind("r", () => $(".tool-button[data-tool='draw']").click());
+  Mousetrap.bind("o", () => $(".tool-button[data-tool='draw_circle']").click());
   Mousetrap.bind(["del", "backspace"], () => $(".tool-button[data-tool='delete']").click());
   Mousetrap.bind("ctrl+z", () => $("#undo_drawing").click());
   Mousetrap.bind("ctrl+s", (e) => {

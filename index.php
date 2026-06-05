@@ -63,6 +63,7 @@
       <button class="ee-button tool-button active" data-tool="pan" title="Pan/Select (P)">✋</button>
       <button class="ee-button tool-button" data-tool="add_token" title="Add Token (T)">★</button>
       <button class="ee-button tool-button" data-tool="draw" title="Draw (R)">✏️</button>
+      <button class="ee-button tool-button" data-tool="draw_circle" title="Draw Circle (O)">⭕</button>
       <button class="ee-button" id="undo_drawing" title="Undo (Ctrl+Z)">↩</button>
       <button class="ee-button tool-button" data-tool="delete" title="Delete (Del/Backspace)">🗑️</button>
       <button class="ee-button" id="save_annotations" title="Save Annotations (Ctrl+S)">💾</button>

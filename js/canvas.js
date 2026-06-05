@@ -38,6 +38,9 @@ class Canvas {
     this._currentStrokeId = null;
     this._drawColor = '#2563eb'; // Default color
     this._drawThickness = 100; // Default thickness
+    this._isResizingCircle = false;
+    this._isDrawingCircle = false;
+    this._currentCircleId = null;
 
     // Get the infobox for displaying selected object data.
     this._infobox = $("#infobox");
@@ -87,7 +90,7 @@ class Canvas {
     // Bind mouseup to the document to correctly end drawing or panning even if the mouse is released outside the canvas.
     $(document).on('mouseup', (event) => {
       // If we are drawing or panning, we want to stop regardless of where the mouse is released.
-      if (this._isDrawing || this._panActive) {
+      if (this._isDrawing || this._isDrawingCircle || this._panActive) {
         this._mouseUp(event);
       } else if (event.target === this._canvas[0]) { // For other actions (like selection clicks), only trigger if the event happened on the canvas.
         this._mouseUp(event);
@@ -238,6 +241,15 @@ class Canvas {
           color: obj.pathEl.getAttribute('stroke'),
           thickness: obj.pathEl.getAttribute('stroke-width')
         };
+      } else if (obj.type === 'circle') {
+        plainObj = {
+          id: obj.id,
+          type: obj.type,
+          center: obj.center,
+          radius: obj.radius,
+          color: obj.pathEl.getAttribute('stroke'),
+          thickness: obj.pathEl.getAttribute('stroke-width')
+        };
       }
       if (plainObj) {
         plainObjects[id] = plainObj;
@@ -292,6 +304,8 @@ class Canvas {
           this.recreateToken(plainObj);
         } else if (plainObj.type === 'stroke') {
           this.recreateStroke(plainObj);
+        } else if (plainObj.type === 'circle') {
+          this.recreateCircle(plainObj);
         }
       }
     } catch (e) {
@@ -352,6 +366,35 @@ class Canvas {
     this._tokenContainer.appendChild(g);
   }
 
+  recreateCircle(plainObj) {
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.style.cursor = 'pointer';
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', plainObj.color);
+    path.setAttribute('stroke-width', plainObj.thickness);
+    g.appendChild(path);
+
+    const hitPath = path.cloneNode();
+    hitPath.setAttribute('stroke', 'transparent');
+    hitPath.setAttribute('stroke-width', parseInt(plainObj.thickness, 10) + 40);
+    g.appendChild(hitPath);
+
+    const resizeHandle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    resizeHandle.setAttribute('class', 'resize-handle');
+    resizeHandle.setAttribute('r', 200);
+    resizeHandle.style.display = 'none';
+    g.appendChild(resizeHandle);
+
+    const circle = { ...plainObj, element: g, pathEl: path, hitEl: hitPath, resizeHandle: resizeHandle };
+    this._userObjects[circle.id] = circle;
+
+    this.updateCircleElement(circle);
+    this._attachCircleInteractionEvents(circle);
+    this._tokenContainer.appendChild(g);
+  }
+
   // Record cursor coordinates on click and release, for dragging.
   _mouseDown(event) {
     if (this._currentTool === 'draw') {
@@ -392,6 +435,37 @@ class Canvas {
       this.addToken(worldPos.x, worldPos.y);
       return;
     }
+    if (this._currentTool === 'draw_circle') {
+      this._isDrawingCircle = true;
+      const worldPos = this.screenToWorld(event.clientX, event.clientY);
+
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.style.cursor = 'pointer';
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', this._drawColor);
+      path.setAttribute('stroke-width', this._drawThickness);
+      g.appendChild(path);
+
+      const hitPath = path.cloneNode();
+      hitPath.setAttribute('stroke', 'transparent');
+      hitPath.setAttribute('stroke-width', this._drawThickness + 40);
+      g.appendChild(hitPath);
+
+      const resizeHandle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      resizeHandle.setAttribute('class', 'resize-handle');
+      resizeHandle.setAttribute('r', 200);
+      resizeHandle.style.display = 'none';
+      g.appendChild(resizeHandle);
+
+      const circleObj = this.addUserObject('circle', { element: g, pathEl: path, hitEl: hitPath, resizeHandle: resizeHandle, center: [worldPos.x, worldPos.y], radius: 0, color: this._drawColor, thickness: this._drawThickness });
+      this._currentCircleId = circleObj.id;
+      this.updateCircleElement(circleObj);
+      this._attachCircleInteractionEvents(circleObj);
+      this._tokenContainer.appendChild(g);
+      return;
+    }
 
     // Default 'pan' tool behavior
     this._firstMouse.x = event.clientX;
@@ -407,6 +481,13 @@ class Canvas {
     if (this._isDrawing) {
       this._isDrawing = false;
       this._currentStrokeId = null;
+      this.saveAnnotationsToServer();
+      return;
+    }
+    if (this._isDrawingCircle) {
+      this._isDrawingCircle = false;
+      this._currentCircleId = null;
+      this.saveAnnotationsToServer();
       return;
     }
 
@@ -598,17 +679,108 @@ class Canvas {
     });
   }
 
+  _attachCircleInteractionEvents(circle) {
+    const g = circle.element;
+    const resizeHandle = circle.resizeHandle;
+
+    // Resize logic
+    resizeHandle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this._isResizingCircle = true;
+
+      const onPointerMove = (moveEvent) => {
+        const worldPos = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
+        const dx = worldPos.x - circle.center[0];
+        const dy = worldPos.y - circle.center[1];
+        const newRadius = Math.sqrt(dx * dx + dy * dy);
+        circle.radius = newRadius;
+        this.updateCircleElement(circle);
+      };
+
+      const onPointerUp = () => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+        this._isResizingCircle = false;
+        this.saveAnnotationsToServer();
+      };
+
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+    });
+
+    // Drag/Select/Delete logic
+    g.addEventListener('pointerdown', (e) => {
+      if (e.target === resizeHandle) return; // Don't drag if handle is clicked
+
+      e.stopPropagation();
+      e.preventDefault();
+
+      if (this._currentTool === 'delete') {
+        this.removeUserObject(circle.id);
+        return;
+      }
+      if (this._currentTool !== 'pan') return;
+
+      let dragMoved = false;
+      const dragThreshold = 3;
+      const startClient = { x: e.clientX, y: e.clientY };
+
+      const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
+      const dragStartCenter = { x: circle.center[0], y: circle.center[1] };
+
+      const onPointerMove = (moveEvent) => {
+        const dx = moveEvent.clientX - startClient.x;
+        const dy = moveEvent.clientY - startClient.y;
+
+        if (!dragMoved && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
+          dragMoved = true;
+          if (this._selectedObject && this._selectedObject.id === circle.id) {
+            this._selectedObject = { type: "No selection" };
+            this.update();
+          }
+        }
+
+        if (dragMoved) {
+          const currentWorld = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
+          const dWorldX = currentWorld.x - dragStartWorld.x;
+          const dWorldY = currentWorld.y - dragStartWorld.y;
+          circle.center[0] = dragStartCenter.x + dWorldX;
+          circle.center[1] = dragStartCenter.y + dWorldY;
+          this.updateCircleElement(circle);
+        }
+      };
+
+      const onPointerUp = () => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+
+        if (dragMoved) {
+          this.saveAnnotationsToServer();
+        } else {
+          // Click - toggle selection
+          this._selectedObject = (this._selectedObject && this._selectedObject.id === circle.id) ? { type: "No selection" } : circle;
+          this.update();
+        }
+      };
+
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+    });
+  }
+
   _attachTokenDragEvents(token) {
     const g = token.element;
     g.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         e.preventDefault(); // Prevent default browser actions like text selection
-        if (this._currentTool !== 'pan') return;
 
         if (this._currentTool === 'delete') {
             this.removeUserObject(token.id);
             return;
         }
+
+        if (this._currentTool !== 'pan') return;
 
         this._tokenClicked = true;
 
@@ -656,6 +828,19 @@ class Canvas {
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', onPointerUp);
     });
+  }
+
+  updateCircleElement(circle) {
+    circle.pathEl.setAttribute('cx', circle.center[0]);
+    circle.pathEl.setAttribute('cy', circle.center[1]);
+    circle.pathEl.setAttribute('r', circle.radius);
+    circle.hitEl.setAttribute('cx', circle.center[0]);
+    circle.hitEl.setAttribute('cy', circle.center[1]);
+    circle.hitEl.setAttribute('r', circle.radius);
+    if (circle.resizeHandle) {
+        circle.resizeHandle.setAttribute('cx', circle.center[0] + circle.radius);
+        circle.resizeHandle.setAttribute('cy', circle.center[1]);
+    }
   }
 
   updateTokenElement(token) {
@@ -868,7 +1053,11 @@ class Canvas {
     // Display maneuvering capabilities, if any.
     if ("config" in selectedObject) {
       if ("turn_speed" in selectedObject.config) {
-        objectOutput.push({"key": "Rotation rate", "value": `${Math.max(0, ((selectedObject.systems["Maneuvering"]["power_level"] * selectedObject.systems["Maneuvering"]["health"]) * selectedObject.config.turn_speed).toFixed(1))}°/sec.`});
+          // Check for the maneuvering system before trying to access its properties.
+          // The key is also lowercase in the logs.
+          if (selectedObject.systems && selectedObject.systems.maneuvering) {
+            objectOutput.push({"key": "Rotation rate", "value": `${Math.max(0, ((selectedObject.systems.maneuvering.power_level * selectedObject.systems.maneuvering.health) * selectedObject.config.turn_speed).toFixed(1))}°/sec.`});
+          }
       }
 
       if ("impulse_speed" in selectedObject.config) {
@@ -1126,6 +1315,16 @@ class Canvas {
       obj.d += ` L ${worldPos.x} ${worldPos.y}`;
       obj.pathEl.setAttribute('d', obj.d);
       obj.hitEl.setAttribute('d', obj.d);
+      return;
+    }
+    if (this._isDrawingCircle && this._currentCircleId) {
+      const worldPos = this.screenToWorld(event.clientX, event.clientY);
+      const obj = this._userObjects[this._currentCircleId];
+      const dx = worldPos.x - obj.center[0];
+      const dy = worldPos.y - obj.center[1];
+      const radius = Math.sqrt(dx * dx + dy * dy);
+      obj.radius = radius;
+      this.updateCircleElement(obj);
       return;
     }
 
@@ -1434,6 +1633,18 @@ class Canvas {
         if (shape) {
           shape.setAttribute('stroke', isSelected ? '#FFFF00' : '#000000');
           shape.setAttribute('stroke-width', isSelected ? '50' : '25');
+        }
+      }
+      if (obj.type === 'circle') {
+        const isSelected = this._selectedObject && this._selectedObject.id === obj.id;
+        obj.pathEl.setAttribute('stroke', isSelected ? '#FFFF00' : obj.color);
+        if (obj.resizeHandle) {
+            if (isSelected) {
+                this.updateCircleElement(obj); // Recalculate handle position
+                obj.resizeHandle.style.display = 'block';
+            } else {
+                obj.resizeHandle.style.display = 'none';
+            }
         }
       }
     });

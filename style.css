@@ -577,3 +577,12 @@ button#autoplay, button#autoplay_speed, input#time_selector {
   background-color: #dc2626; /* A red color from the color swatches */
   border-color: #f87171;
 }
+
+.resize-handle {
+  fill: #f59e0b; /* yellow-orange */
+  stroke: #fff;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+  fill-opacity: 0.4;
+  cursor: ew-resize;
+}
