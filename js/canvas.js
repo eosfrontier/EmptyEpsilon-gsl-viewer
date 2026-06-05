@@ -1,6 +1,6 @@
 // Create and manage the HTML canvas to visualize game state at a point in time.
 class Canvas {
-  constructor () {
+  constructor() {
     // Load fonts for canvas use.
     const textFont = new FontFace('Big Shoulders', 'url(fonts/BigShoulders/BigShouldersText-VariableFont_wght.ttf)');
     const iconFont = new FontFace('EmptyEpsilon Icons', 'url(fonts/icons-font/icons-font.woff)');
@@ -41,6 +41,11 @@ class Canvas {
     this._isResizingCircle = false;
     this._isDrawingCircle = false;
     this._currentCircleId = null;
+    this._potentialDragId = null;
+    this._isDraggingObject = false;
+    this._draggedObject = null;
+    this._dragStartPos = null;
+    this._dragStartMouse = null;
 
     // Get the infobox for displaying selected object data.
     this._infobox = $("#infobox");
@@ -250,6 +255,13 @@ class Canvas {
           color: obj.pathEl.getAttribute('stroke'),
           thickness: obj.pathEl.getAttribute('stroke-width')
         };
+      } else if (obj.type === 'override') {
+        plainObj = {
+          id: obj.id,
+          type: obj.type,
+          logId: obj.logId,
+          position: obj.position
+        };
       }
       if (plainObj) {
         plainObjects[id] = plainObj;
@@ -269,14 +281,14 @@ class Canvas {
       method: 'POST',
       body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
-      if (data.status === 'success') {
-        console.log('Annotations saved:', data.message);
-      } else {
-        throw new Error(data.message || 'Unknown error saving annotations.');
-      }
-    });
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'success') {
+          console.log('Annotations saved:', data.message);
+        } else {
+          throw new Error(data.message || 'Unknown error saving annotations.');
+        }
+      });
   }
 
   loadAnnotationsFromPage() {
@@ -302,6 +314,8 @@ class Canvas {
           this.recreateStroke(plainObj);
         } else if (plainObj.type === 'circle') {
           this.recreateCircle(plainObj);
+        } else if (plainObj.type === 'override') {
+          this._userObjects[plainObj.id] = plainObj;
         }
       }
     } catch (e) {
@@ -468,6 +482,22 @@ class Canvas {
     this._firstMouse.y = event.clientY;
     this._lastMouse.x = this._firstMouse.x;
     this._lastMouse.y = this._firstMouse.y;
+
+    if (this._currentTool === 'pan') {
+      // Get mouse position relative to the canvas and check its hit canvas pixel.
+      const mousePosition = {
+        "x": event.clientX - this._canvas[0].offsetLeft,
+        "y": event.clientY - this._canvas[0].offsetTop
+      };
+      const ctxHit = this._hitCanvas.getContext("2d", { "alpha": false });
+      const pixel = ctxHit.getImageData(mousePosition.x, mousePosition.y, 1, 1).data;
+
+      const id = Canvas.rgbToId(pixel[0], pixel[1], pixel[2]);
+      if (id > 0) {
+        this._potentialDragId = id;
+      }
+    }
+
     this._panActive = true;
     this._canvas.css('cursor', 'grabbing');
   }
@@ -486,6 +516,27 @@ class Canvas {
       this.saveAnnotationsToServer();
       return;
     }
+
+    if (this._isDraggingObject) {
+      if (this._draggedObject) {
+        if (!this._draggedObject.existedBeforeDrag) {
+          // This was the first drag, creating the override. Undo should delete it.
+          this._userHistory.push({ type: 'create', id: this._draggedObject.id });
+        } else {
+          // This was a move of an existing override. Undo should revert position.
+          this._userHistory.push({
+            type: 'move',
+            id: this._draggedObject.id,
+            oldPosition: this._dragStartPos
+          });
+        }
+        delete this._draggedObject.existedBeforeDrag;
+      }
+      this.saveAnnotationsToServer();
+    }
+    this._potentialDragId = null;
+    this._isDraggingObject = false;
+    this._draggedObject = null;
 
     // If a token was just clicked, its own handler has already dealt with selection.
     // Prevent the canvas mouseup from overriding it.
@@ -543,7 +594,7 @@ class Canvas {
   }
 
   // The hell is wrong with you, javascript? https://www.codereadability.com/how-to-check-for-undefined-in-javascript/
-  static isUndefined (value) {
+  static isUndefined(value) {
     // Obtain "undefined" value that's guaranteed to not have been re-assigned.
     // eslint-disable-next-line no-shadow-restricted-names
     const undefined = void (0);
@@ -551,13 +602,13 @@ class Canvas {
   }
 
   // Format scenario time from seconds to into HH:mm:ss.
-  static formatTime (time) {
-    const result = new Date(time * 1000).toISOString().slice(11,19);
+  static formatTime(time) {
+    const result = new Date(time * 1000).toISOString().slice(11, 19);
     return `${result}`;
   }
 
   // Check whether the given object is defined, and still present and valid.
-  static isSelectionValid (selectedObject) {
+  static isSelectionValid(selectedObject) {
     // selectedObject can't have a default value. https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/Default_parameters#Passing_undefined_vs._other_falsy_values
     if (Canvas.isUndefined(selectedObject) ||
       selectedObject === null) {
@@ -576,7 +627,7 @@ class Canvas {
   }
 
   // Move the camera to the given world-space coordinates.
-  pointCameraAt (positionX, positionY) {
+  pointCameraAt(positionX, positionY) {
     if (typeof positionX === "number" && typeof positionY === "number") {
       this._view.x = positionX;
       this._view.y = positionY;
@@ -586,16 +637,26 @@ class Canvas {
   }
 
   undo() {
-    if (this._userHistory.length === 0) return;
-    const lastId = this._userHistory.pop();
+    if (this._userHistory.length === 0) {
+      return;
+    }
+    const lastAction = this._userHistory.pop();
 
-    const obj = this._userObjects[lastId];
-    if (obj && obj.element) obj.element.remove();
-    delete this._userObjects[lastId];
+    if (lastAction.type === 'create') {
+      const { id } = lastAction;
+      const obj = this._userObjects[id];
+      if (obj && obj.element) obj.element.remove();
+      delete this._userObjects[id];
 
-    if (this._selectedObject && this._selectedObject.id === lastId) {
-      this._selectedObject = { type: "No selection" };
-      this._infobox.removeClass('centered-infobox').hide();
+      if (this._selectedObject && this._selectedObject.id === id) {
+        this._selectedObject = { type: "No selection" };
+        this._infobox.removeClass('centered-infobox').hide();
+      }
+    } else if (lastAction.type === 'move') {
+      const obj = this._userObjects[lastAction.id];
+      if (obj) {
+        obj.position = lastAction.oldPosition;
+      }
     }
     this.update();
   }
@@ -604,7 +665,7 @@ class Canvas {
     const id = 'user_' + this._userObjectCounter++;
     const obj = { id, ...data, type };
     this._userObjects[id] = obj;
-    this._userHistory.push(id);
+    this._userHistory.push({ type: 'create', id });
     return obj;
   }
 
@@ -615,7 +676,7 @@ class Canvas {
     if (obj.element) obj.element.remove();
     delete this._userObjects[id];
 
-    this._userHistory = this._userHistory.filter(hId => hId !== id);
+    this._userHistory = this._userHistory.filter(action => action.id !== id);
 
     if (this._selectedObject && this._selectedObject.id === id) {
       this._selectedObject = { type: "No selection" };
@@ -768,61 +829,61 @@ class Canvas {
   _attachTokenDragEvents(token) {
     const g = token.element;
     g.addEventListener('pointerdown', (e) => {
-        e.stopPropagation();
-        e.preventDefault(); // Prevent default browser actions like text selection
+      e.stopPropagation();
+      e.preventDefault(); // Prevent default browser actions like text selection
 
-        if (this._currentTool === 'delete') {
-            this.removeUserObject(token.id);
-            return;
+      if (this._currentTool === 'delete') {
+        this.removeUserObject(token.id);
+        return;
+      }
+
+      if (this._currentTool !== 'pan') return;
+
+      this._tokenClicked = true;
+
+      let dragMoved = false;
+      const dragThreshold = 3;
+      const startClient = { x: e.clientX, y: e.clientY };
+
+      const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
+      const dragStartPos = { x: token.position[0], y: token.position[1] };
+
+      const onPointerMove = (moveEvent) => {
+        const dx = moveEvent.clientX - startClient.x;
+        const dy = moveEvent.clientY - startClient.y;
+
+        if (!dragMoved && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
+          dragMoved = true;
+          // A drag has started. If a token is selected, deselect it to hide the infobox.
+          if (this._selectedObject && this._selectedObject.isCustom) {
+            this._selectedObject = { type: "No selection" };
+            this._infobox.removeClass('centered-infobox').hide();
+            this.update();
+          }
         }
 
-        if (this._currentTool !== 'pan') return;
+        if (dragMoved) {
+          const currentWorld = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
+          const dWorldX = currentWorld.x - dragStartWorld.x;
+          const dWorldY = currentWorld.y - dragStartWorld.y;
+          token.position[0] = dragStartPos.x + dWorldX;
+          token.position[1] = dragStartPos.y + dWorldY;
+          this.updateTokenElement(token);
+        }
+      };
+      const onPointerUp = () => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
 
-        this._tokenClicked = true;
-
-        let dragMoved = false;
-        const dragThreshold = 3;
-        const startClient = { x: e.clientX, y: e.clientY };
-
-        const dragStartWorld = this.screenToWorld(e.clientX, e.clientY);
-        const dragStartPos = { x: token.position[0], y: token.position[1] };
-
-        const onPointerMove = (moveEvent) => {
-            const dx = moveEvent.clientX - startClient.x;
-            const dy = moveEvent.clientY - startClient.y;
-
-            if (!dragMoved && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
-                dragMoved = true;
-                // A drag has started. If a token is selected, deselect it to hide the infobox.
-                if (this._selectedObject && this._selectedObject.isCustom) {
-                    this._selectedObject = { type: "No selection" };
-                    this._infobox.removeClass('centered-infobox').hide();
-                    this.update();
-                }
-            }
-
-            if (dragMoved) {
-                const currentWorld = this.screenToWorld(moveEvent.clientX, moveEvent.clientY);
-                const dWorldX = currentWorld.x - dragStartWorld.x;
-                const dWorldY = currentWorld.y - dragStartWorld.y;
-                token.position[0] = dragStartPos.x + dWorldX;
-                token.position[1] = dragStartPos.y + dWorldY;
-                this.updateTokenElement(token);
-            }
-        };
-        const onPointerUp = () => {
-            document.removeEventListener('pointermove', onPointerMove);
-            document.removeEventListener('pointerup', onPointerUp);
-
-            if (!dragMoved) {
-                // This was a click.
-                this._selectedObject = token;
-                this.updateSelectionInfobox();
-                this.update();
-            }
-        };
-        document.addEventListener('pointermove', onPointerMove);
-        document.addEventListener('pointerup', onPointerUp);
+        if (!dragMoved) {
+          // This was a click.
+          this._selectedObject = token;
+          this.updateSelectionInfobox();
+          this.update();
+        }
+      };
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
     });
   }
 
@@ -834,8 +895,8 @@ class Canvas {
     circle.hitEl.setAttribute('cy', circle.center[1]);
     circle.hitEl.setAttribute('r', circle.radius);
     if (circle.resizeHandle) {
-        circle.resizeHandle.setAttribute('cx', circle.center[0] + circle.radius);
-        circle.resizeHandle.setAttribute('cy', circle.center[1]);
+      circle.resizeHandle.setAttribute('cx', circle.center[0] + circle.radius);
+      circle.resizeHandle.setAttribute('cy', circle.center[1]);
     }
   }
 
@@ -848,24 +909,24 @@ class Canvas {
 
     let shapeEl;
     switch (token.shape) {
-    case 'station':
-      shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      const hexSize = 400;
-      let hexPoints = "";
-      for (let i = 0; i < 6; i++) {
-        hexPoints += `${hexSize * Math.cos(i * 2 * Math.PI / 6)},${hexSize * Math.sin(i * 2 * Math.PI / 6)} `;
-      }
-      shapeEl.setAttribute('points', hexPoints.trim());
-      break;
-    case 'marker':
-      shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      shapeEl.setAttribute('points', '0,-400 300,0 0,400 -300,0');
-      break;
-    case 'ship':
-    default:
-      shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-      shapeEl.setAttribute('points', '0,-400 -280,200 280,200');
-      break;
+      case 'station':
+        shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        const hexSize = 400;
+        let hexPoints = "";
+        for (let i = 0; i < 6; i++) {
+          hexPoints += `${hexSize * Math.cos(i * 2 * Math.PI / 6)},${hexSize * Math.sin(i * 2 * Math.PI / 6)} `;
+        }
+        shapeEl.setAttribute('points', hexPoints.trim());
+        break;
+      case 'marker':
+        shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        shapeEl.setAttribute('points', '0,-400 300,0 0,400 -300,0');
+        break;
+      case 'ship':
+      default:
+        shapeEl = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        shapeEl.setAttribute('points', '0,-400 -280,200 280,200');
+        break;
     }
     shapeEl.classList.add('token-shape');
     g.insertBefore(shapeEl, g.firstChild); // insert before text
@@ -886,7 +947,7 @@ class Canvas {
   }
 
   // Zoom camera in (positive zoomFactor), out (negative zoomFactor), or to a given level (zoomValue).
-  zoomCamera (zoomFactor = 1, zoomValue = null) {
+  zoomCamera(zoomFactor = 1, zoomValue = null) {
     // If a valid zoomValue is passed, just go to it.
     if (zoomValue > 0 && zoomValue < 0.15) {
       this._zoomScale = zoomValue;
@@ -906,15 +967,15 @@ class Canvas {
   }
 
   // Update the selected object for the current point in the timeline.
-  updateSelection (timeValue = $("#time_selector").val()) {
-    const {id} = this._selectedObject,
+  updateSelection(timeValue = $("#time_selector").val()) {
+    const { id } = this._selectedObject,
       entry = log.getEntriesAtTime(timeValue);
 
     this._selectedObject = entry[id];
   }
 
   // Normalize the given heading to 0-360.
-  static normalizeHeading (heading) {
+  static normalizeHeading(heading) {
     while (heading >= 360.0) {
       heading -= 360.0;
     }
@@ -927,13 +988,13 @@ class Canvas {
   }
 
   // Convert an integer shield/beam frequency to a string.
-  static frequencyToString (frequency) {
+  static frequencyToString(frequency) {
     return `${400 + (frequency * 20)} THz`;
   }
 
   // TODO: Break infobox handling into its own class, use DOM instead of hardcoded HTML,
   // render all elements, update them each tick, and toggle unusued ones instead of rewriting the whole infobox each tick
-  updateSelectionInfobox (timeValue = $("#time_selector").val()) {
+  updateSelectionInfobox(timeValue = $("#time_selector").val()) {
     // Clear the infobox and don't bother continuing if the selected object isn't valid.
     if (Canvas.isSelectionValid(this._selectedObject) === false) { // eslint-disable-line
       this._infobox.removeClass('centered-infobox');
@@ -1008,92 +1069,92 @@ class Canvas {
     // Title is the callsign if present (object type if not), with faction if one is assigned.
     if ("callsign" in selectedObject) {
       if ("faction" in selectedObject) {
-        objectOutput.push({"key": "h1", "value": `${selectedObject.callsign} (${selectedObject.faction})`});
+        objectOutput.push({ "key": "h1", "value": `${selectedObject.callsign} (${selectedObject.faction})` });
       } else {
-        objectOutput.push({"key": "h1", "value": selectedObject.callsign});
+        objectOutput.push({ "key": "h1", "value": selectedObject.callsign });
       }
     } else if ("faction" in selectedObject) {
-      objectOutput.push({"key": "h1", "value": `${selectedObject.type} (${selectedObject.faction})`});
+      objectOutput.push({ "key": "h1", "value": `${selectedObject.type} (${selectedObject.faction})` });
     } else {
-      objectOutput.push({"key": "h1", "value": selectedObject.type});
+      objectOutput.push({ "key": "h1", "value": selectedObject.type });
     }
 
     // Add ship type. Flag if it's a player ship.
     switch (selectedObject.type) {
       case "PlayerSpaceship":
-        objectOutput.push({"key": "Type", "value": `${selectedObject.ship_type} (Player)`});
+        objectOutput.push({ "key": "Type", "value": `${selectedObject.ship_type} (Player)` });
         break;
       case "SpaceStation":
-        objectOutput.push({"key": "Type", "value": selectedObject.station_type});
+        objectOutput.push({ "key": "Type", "value": selectedObject.station_type });
         break;
       case "CpuShip":
-        objectOutput.push({"key": "Type", "value": selectedObject.ship_type});
+        objectOutput.push({ "key": "Type", "value": selectedObject.ship_type });
         break;
       default:
-        objectOutput.push({"key": "Type", "value": selectedObject.type});
+        objectOutput.push({ "key": "Type", "value": selectedObject.type });
     }
 
     // Display the object's coordinates.
-    objectOutput.push({"key": "Position", "value": `${selectedObject.position[0].toFixed(1)}, ${selectedObject.position[1].toFixed(1)} (${Canvas.getSectorDesignation(selectedObject.position[0], selectedObject.position[1], this.sectorSize)})`});
+    objectOutput.push({ "key": "Position", "value": `${selectedObject.position[0].toFixed(1)}, ${selectedObject.position[1].toFixed(1)} (${Canvas.getSectorDesignation(selectedObject.position[0], selectedObject.position[1], this.sectorSize)})` });
 
     // # Maneuvering
-    objectOutput.push({"key": "h1", "value": "Maneuvering"});
+    objectOutput.push({ "key": "h1", "value": "Maneuvering" });
 
     // Display the objects heading, and its target heading if it has input.
     if ("input" in selectedObject) {
-      objectOutput.push({"key": "Heading", "value": `${heading.toFixed(1)}° (plotted ${Canvas.normalizeHeading(selectedObject.input.rotation + 90).toFixed(1)}°)`});
+      objectOutput.push({ "key": "Heading", "value": `${heading.toFixed(1)}° (plotted ${Canvas.normalizeHeading(selectedObject.input.rotation + 90).toFixed(1)}°)` });
     } else {
-      objectOutput.push({"key": "Heading", "value": `${heading.toFixed(1)}°`});
+      objectOutput.push({ "key": "Heading", "value": `${heading.toFixed(1)}°` });
     }
 
     // Display maneuvering capabilities, if any.
     if ("config" in selectedObject) {
       if ("turn_speed" in selectedObject.config) {
-          // Check for the maneuvering system before trying to access its properties.
-          // The key is also lowercase in the logs.
-          if (selectedObject.systems && selectedObject.systems.maneuvering) {
-            objectOutput.push({"key": "Rotation rate", "value": `${Math.max(0, ((selectedObject.systems.maneuvering.power_level * selectedObject.systems.maneuvering.health) * selectedObject.config.turn_speed).toFixed(1))}°/sec.`});
-          }
+        // Check for the maneuvering system before trying to access its properties.
+        // The key is also lowercase in the logs.
+        if (selectedObject.systems && selectedObject.systems.maneuvering) {
+          objectOutput.push({ "key": "Rotation rate", "value": `${Math.max(0, ((selectedObject.systems.maneuvering.power_level * selectedObject.systems.maneuvering.health) * selectedObject.config.turn_speed).toFixed(1))}°/sec.` });
+        }
       }
 
       if ("impulse_speed" in selectedObject.config) {
-        objectOutput.push({"key": "h2", "value": "Impulse Propulsion"});
+        objectOutput.push({ "key": "h2", "value": "Impulse Propulsion" });
 
         if ("Impulse Engines" in selectedObject.systems) {
-          objectOutput.push({"key": "Speed", "value": `${Math.max(0, ((selectedObject.systems["Impulse Engines"]["power_level"] * selectedObject.systems["Impulse Engines"]["health"]) * (selectedObject.config.impulse_speed * selectedObject.output.impulse)).toFixed(1))} (max ${Math.max(0, ((selectedObject.systems["Impulse Engines"]["power_level"] * selectedObject.systems["Impulse Engines"]["health"]) * selectedObject.config.impulse_speed).toFixed(1))})`});
+          objectOutput.push({ "key": "Speed", "value": `${Math.max(0, ((selectedObject.systems["Impulse Engines"]["power_level"] * selectedObject.systems["Impulse Engines"]["health"]) * (selectedObject.config.impulse_speed * selectedObject.output.impulse)).toFixed(1))} (max ${Math.max(0, ((selectedObject.systems["Impulse Engines"]["power_level"] * selectedObject.systems["Impulse Engines"]["health"]) * selectedObject.config.impulse_speed).toFixed(1))})` });
         } else {
-          objectOutput.push({"key": "Speed", "value": `${Math.max(0, selectedObject.config.impulse_speed * selectedObject.output.impulse).toFixed(1)} (max ${Math.max(0, selectedObject.config.impulse_speed).toFixed(1)})`});
+          objectOutput.push({ "key": "Speed", "value": `${Math.max(0, selectedObject.config.impulse_speed * selectedObject.output.impulse).toFixed(1)} (max ${Math.max(0, selectedObject.config.impulse_speed).toFixed(1)})` });
         }
 
-        objectOutput.push({"key": "Acceleration", "value": `${(selectedObject.config.impulse_acceleration)}`});
-        objectOutput.push({"key": "Throttle", "value": `${Math.floor(selectedObject.output.impulse * 100)}% (target ${Math.floor(selectedObject.input.impulse * 100)}%)`});
+        objectOutput.push({ "key": "Acceleration", "value": `${(selectedObject.config.impulse_acceleration)}` });
+        objectOutput.push({ "key": "Throttle", "value": `${Math.floor(selectedObject.output.impulse * 100)}% (target ${Math.floor(selectedObject.input.impulse * 100)}%)` });
       }
 
       if ("combat_maneuver_boost" in selectedObject.config) {
-        objectOutput.push({"key": "h2", "value": "Combat Maneuvering"});
-        objectOutput.push({"key": "Charge", "value": `${Math.floor(selectedObject.output.combat_maneuver_charge * 100)}% available`});
-        objectOutput.push({"key": "Boost", "value": `${Math.floor(selectedObject.output.combat_maneuver_boost * 100)}% engaged`});
-        objectOutput.push({"key": "Strafe", "value": `${Math.floor(selectedObject.output.combat_maneuver_strafe * 100)}% engaged`});
+        objectOutput.push({ "key": "h2", "value": "Combat Maneuvering" });
+        objectOutput.push({ "key": "Charge", "value": `${Math.floor(selectedObject.output.combat_maneuver_charge * 100)}% available` });
+        objectOutput.push({ "key": "Boost", "value": `${Math.floor(selectedObject.output.combat_maneuver_boost * 100)}% engaged` });
+        objectOutput.push({ "key": "Strafe", "value": `${Math.floor(selectedObject.output.combat_maneuver_strafe * 100)}% engaged` });
       }
 
       // Report on the jump drive.
       if ("jumpdrive" in selectedObject.config) {
-        objectOutput.push({"key": "h2", "value": "Jump Drive"});
+        objectOutput.push({ "key": "h2", "value": "Jump Drive" });
 
         // `charge` is in the object only if we're not currently jumping.
         if ("output" in selectedObject && "jump" in selectedObject.output) {
           if ("charge" in selectedObject.output.jump) {
             // If we're not jumping, report so and track the current charge.
-            objectOutput.push({"key": "Drive", "value": "Idle"});
-            objectOutput.push({"key": "Charge", "value": Math.floor(selectedObject.output.jump.charge)});
-            objectOutput.push({"key": "Distance", "value": "—"});
-            objectOutput.push({"key": "Delay", "value": "—"});
+            objectOutput.push({ "key": "Drive", "value": "Idle" });
+            objectOutput.push({ "key": "Charge", "value": Math.floor(selectedObject.output.jump.charge) });
+            objectOutput.push({ "key": "Distance", "value": "—" });
+            objectOutput.push({ "key": "Delay", "value": "—" });
           } else {
             // If we're jumping, report so and track the jump distance and time to jump.
-            objectOutput.push({"key": "Drive", "value": "Engaged"});
-            objectOutput.push({"key": "Charge", "value": "—"});
-            objectOutput.push({"key": "Distance", "value": `${(selectedObject.output.jump.distance / 1000).toFixed(1)}U`});
-            objectOutput.push({"key": "Time to Jump", "value": `${(selectedObject.output.jump.delay).toFixed(1)} sec.`});
+            objectOutput.push({ "key": "Drive", "value": "Engaged" });
+            objectOutput.push({ "key": "Charge", "value": "—" });
+            objectOutput.push({ "key": "Distance", "value": `${(selectedObject.output.jump.distance / 1000).toFixed(1)}U` });
+            objectOutput.push({ "key": "Time to Jump", "value": `${(selectedObject.output.jump.delay).toFixed(1)} sec.` });
           }
         }
       }
@@ -1101,9 +1162,9 @@ class Canvas {
       // Report on the warp drive.
       if ("config" in selectedObject) {
         if ("warp" in selectedObject.config) {
-          objectOutput.push({"key": "h2", "value": "Warp Drive"});
-          objectOutput.push({"key": "Speed", "value": `${Math.floor(selectedObject.output.warp)} (max ${Math.floor(selectedObject.config.warp)})`});
-          objectOutput.push({"key": "Factor setting", "value": selectedObject.input.warp.toFixed(1)});
+          objectOutput.push({ "key": "h2", "value": "Warp Drive" });
+          objectOutput.push({ "key": "Speed", "value": `${Math.floor(selectedObject.output.warp)} (max ${Math.floor(selectedObject.config.warp)})` });
+          objectOutput.push({ "key": "Factor setting", "value": selectedObject.input.warp.toFixed(1) });
         }
       }
     }
@@ -1117,8 +1178,8 @@ class Canvas {
 
     // Report on defensive capabilities, if the object has any. Start with the hull.
     if ("hull" in selectedObject) {
-      objectOutput.push({"key": "h1", "value": "Defenses"});
-      objectOutput.push({"key": "Hull", "value": `${Math.floor(selectedObject.hull)} (${Math.floor((selectedObject.hull / selectedObject.config.hull) * 100)}%)`});
+      objectOutput.push({ "key": "h1", "value": "Defenses" });
+      objectOutput.push({ "key": "Hull", "value": `${Math.floor(selectedObject.hull)} (${Math.floor((selectedObject.hull / selectedObject.config.hull) * 100)}%)` });
     }
 
     // (If more than 0 shields)
@@ -1126,31 +1187,31 @@ class Canvas {
       // Shield frequency: shield_frequency -> convert int to hz equivalent
       // return string(400 + (frequency * 20)) + "THz";
       if ("shield_frequency" in selectedObject) {
-        objectOutput.push({"key": "Shield frequency", "value": Canvas.frequencyToString(selectedObject.shield_frequency)});
+        objectOutput.push({ "key": "Shield frequency", "value": Canvas.frequencyToString(selectedObject.shield_frequency) });
       }
 
       switch (selectedObject.shields.length) {
         case 1:
-          objectOutput.push({"key": "Shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)`});
+          objectOutput.push({ "key": "Shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)` });
           break;
         case 2:
-          objectOutput.push({"key": "Fore shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)`});
-          objectOutput.push({"key": "Aft shields", "value": `${Math.floor(selectedObject.shields[1])} (${Math.floor(selectedObject.shields[1] / selectedObject.config.shields[1] * 100)}%)`});
+          objectOutput.push({ "key": "Fore shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)` });
+          objectOutput.push({ "key": "Aft shields", "value": `${Math.floor(selectedObject.shields[1])} (${Math.floor(selectedObject.shields[1] / selectedObject.config.shields[1] * 100)}%)` });
           break;
         case 3:
-          objectOutput.push({"key": "Fore shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)`});
-          objectOutput.push({"key": "Starboard shields", "value": `${Math.floor(selectedObject.shields[1])} (${Math.floor(selectedObject.shields[1] / selectedObject.config.shields[1] * 100)}%)`});
-          objectOutput.push({"key": "Port shields", "value": `${Math.floor(selectedObject.shields[2])} (${Math.floor(selectedObject.shields[2] / selectedObject.config.shields[2] * 100)}%)`});
+          objectOutput.push({ "key": "Fore shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)` });
+          objectOutput.push({ "key": "Starboard shields", "value": `${Math.floor(selectedObject.shields[1])} (${Math.floor(selectedObject.shields[1] / selectedObject.config.shields[1] * 100)}%)` });
+          objectOutput.push({ "key": "Port shields", "value": `${Math.floor(selectedObject.shields[2])} (${Math.floor(selectedObject.shields[2] / selectedObject.config.shields[2] * 100)}%)` });
           break;
         case 4:
-          objectOutput.push({"key": "Fore shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)`});
-          objectOutput.push({"key": "Starboard shields", "value": `${Math.floor(selectedObject.shields[1])} (${Math.floor(selectedObject.shields[1] / selectedObject.config.shields[1] * 100)}%)`});
-          objectOutput.push({"key": "Aft shields", "value": `${Math.floor(selectedObject.shields[2])} (${Math.floor(selectedObject.shields[2] / selectedObject.config.shields[2] * 100)}%)`});
-          objectOutput.push({"key": "Port shields", "value": `${Math.floor(selectedObject.shields[3])} (${Math.floor(selectedObject.shields[3] / selectedObject.config.shields[3] * 100)}%)`});
+          objectOutput.push({ "key": "Fore shields", "value": `${Math.floor(selectedObject.shields[0])} (${Math.floor(selectedObject.shields[0] / selectedObject.config.shields[0] * 100)}%)` });
+          objectOutput.push({ "key": "Starboard shields", "value": `${Math.floor(selectedObject.shields[1])} (${Math.floor(selectedObject.shields[1] / selectedObject.config.shields[1] * 100)}%)` });
+          objectOutput.push({ "key": "Aft shields", "value": `${Math.floor(selectedObject.shields[2])} (${Math.floor(selectedObject.shields[2] / selectedObject.config.shields[2] * 100)}%)` });
+          objectOutput.push({ "key": "Port shields", "value": `${Math.floor(selectedObject.shields[3])} (${Math.floor(selectedObject.shields[3] / selectedObject.config.shields[3] * 100)}%)` });
           break;
         default:
           for (let index = 0; index < selectedObject.shields.length - 1; index += 1) {
-            objectOutput.push({"key": `Shield ${index + 1}`, "value": `${Math.floor(selectedObject.shields[index])} (${(selectedObject.shields[index] / selectedObject.config.shields[index] * 100)}%)`});
+            objectOutput.push({ "key": `Shield ${index + 1}`, "value": `${Math.floor(selectedObject.shields[index])} (${(selectedObject.shields[index] / selectedObject.config.shields[index] * 100)}%)` });
           }
       }
     }
@@ -1159,26 +1220,26 @@ class Canvas {
     if ("config" in selectedObject) {
       // # Beams
       if ("beams" in selectedObject.config) {
-        objectOutput.push({"key": "h1", "value": "Beam Weapons"});
+        objectOutput.push({ "key": "h1", "value": "Beam Weapons" });
         // Beam frequency: beam_frequency -> convert int to hz equivalent
         // 400 + (frequency * 20)) + "THz";
-        objectOutput.push({"key": "Beam frequency", "value": Canvas.frequencyToString(selectedObject.beam_frequency)});
+        objectOutput.push({ "key": "Beam frequency", "value": Canvas.frequencyToString(selectedObject.beam_frequency) });
 
         for (let index = 0; index < selectedObject.config.beams.length; index += 1) {
           const beam = selectedObject.config.beams[index];
 
           // Some ships have a 0-arc beam?
           if (beam.arc > 0) {
-            objectOutput.push({"key": "h2", "value": `Beam Weapon ${index + 1}`});
-            objectOutput.push({"key": "Bearing", "value": `${Canvas.normalizeHeading(beam.direction)}°`});
-            objectOutput.push({"key": "Arc", "value": `${beam.arc}°`});
-            objectOutput.push({"key": "Range", "value": `${(beam.range / 1000).toFixed(1)}U`});
-            objectOutput.push({"key": "Damage", "value": `${beam.damage} (${(beam.damage / beam.cycle_time).toFixed(1)}/sec.)`});
-            objectOutput.push({"key": "Cycle time", "value": `${beam.cycle_time.toFixed(1)} sec.`});
+            objectOutput.push({ "key": "h2", "value": `Beam Weapon ${index + 1}` });
+            objectOutput.push({ "key": "Bearing", "value": `${Canvas.normalizeHeading(beam.direction)}°` });
+            objectOutput.push({ "key": "Arc", "value": `${beam.arc}°` });
+            objectOutput.push({ "key": "Range", "value": `${(beam.range / 1000).toFixed(1)}U` });
+            objectOutput.push({ "key": "Damage", "value": `${beam.damage} (${(beam.damage / beam.cycle_time).toFixed(1)}/sec.)` });
+            objectOutput.push({ "key": "Cycle time", "value": `${beam.cycle_time.toFixed(1)} sec.` });
 
             if ("turret_arc" in beam && beam.turret_arc > 0) {
-              objectOutput.push({"key": "Turret Bearing", "value": `${Canvas.normalizeHeading(beam.turret_direction)}°`});
-              objectOutput.push({"key": "Turret Arc", "value": `${beam.turret_arc}°`});
+              objectOutput.push({ "key": "Turret Bearing", "value": `${Canvas.normalizeHeading(beam.turret_direction)}°` });
+              objectOutput.push({ "key": "Turret Arc", "value": `${beam.turret_arc}°` });
             }
           }
         }
@@ -1186,46 +1247,46 @@ class Canvas {
 
       // Enforce the same missile order as the game UI.
       if ("missiles" in selectedObject) {
-        objectOutput.push({"key": "h1", "value": "Missiles and Mines"});
+        objectOutput.push({ "key": "h1", "value": "Missiles and Mines" });
 
         if ("Homing" in selectedObject.config.missiles) {
           // If there are 0 missiles of a type in stock, the value isn't reported at all.
           if ("Homing" in selectedObject.missiles) {
-            objectOutput.push({"key": "Homing", "value": `${selectedObject.missiles.Homing} / ${selectedObject.config.missiles.Homing}`});
+            objectOutput.push({ "key": "Homing", "value": `${selectedObject.missiles.Homing} / ${selectedObject.config.missiles.Homing}` });
           } else {
-            objectOutput.push({"key": "Homing", "value": `0 / ${selectedObject.config.missiles.Homing}`});
+            objectOutput.push({ "key": "Homing", "value": `0 / ${selectedObject.config.missiles.Homing}` });
           }
         }
 
         if ("Nuke" in selectedObject.config.missiles) {
           if ("Nuke" in selectedObject.missiles) {
-            objectOutput.push({"key": "Nuke", "value": `${selectedObject.missiles.Nuke} / ${selectedObject.config.missiles.Nuke}`});
+            objectOutput.push({ "key": "Nuke", "value": `${selectedObject.missiles.Nuke} / ${selectedObject.config.missiles.Nuke}` });
           } else {
-            objectOutput.push({"key": "Nuke", "value": `0 / ${selectedObject.config.missiles.Nuke}`});
+            objectOutput.push({ "key": "Nuke", "value": `0 / ${selectedObject.config.missiles.Nuke}` });
           }
         }
 
         if ("EMP" in selectedObject.config.missiles) {
           if ("EMP" in selectedObject.missiles) {
-            objectOutput.push({"key": "EMP", "value": `${selectedObject.missiles.EMP} / ${selectedObject.config.missiles.EMP}`});
+            objectOutput.push({ "key": "EMP", "value": `${selectedObject.missiles.EMP} / ${selectedObject.config.missiles.EMP}` });
           } else {
-            objectOutput.push({"key": "EMP", "value": `0 / ${selectedObject.config.missiles.EMP}`});
+            objectOutput.push({ "key": "EMP", "value": `0 / ${selectedObject.config.missiles.EMP}` });
           }
         }
 
         if ("HVLI" in selectedObject.config.missiles) {
           if ("HVLI" in selectedObject.missiles) {
-            objectOutput.push({"key": "HVLI", "value": `${selectedObject.missiles.HVLI} / ${selectedObject.config.missiles.HVLI}`});
+            objectOutput.push({ "key": "HVLI", "value": `${selectedObject.missiles.HVLI} / ${selectedObject.config.missiles.HVLI}` });
           } else {
-            objectOutput.push({"key": "HVLI", "value": `0 / ${selectedObject.config.missiles.HVLI}`});
+            objectOutput.push({ "key": "HVLI", "value": `0 / ${selectedObject.config.missiles.HVLI}` });
           }
         }
 
         if ("Mine" in selectedObject.config.missiles) {
           if ("Mine" in selectedObject.missiles) {
-            objectOutput.push({"key": "Mine", "value": `${selectedObject.missiles.Mine} / ${selectedObject.config.missiles.Mine}`});
+            objectOutput.push({ "key": "Mine", "value": `${selectedObject.missiles.Mine} / ${selectedObject.config.missiles.Mine}` });
           } else {
-            objectOutput.push({"key": "Mine", "value": `0 / ${selectedObject.config.missiles.Mine}`});
+            objectOutput.push({ "key": "Mine", "value": `0 / ${selectedObject.config.missiles.Mine}` });
           }
         }
       }
@@ -1236,47 +1297,47 @@ class Canvas {
           const tube = selectedObject.config.tubes[index],
             tubeState = selectedObject.tubes[index];
 
-          objectOutput.push({"key": "h2", "value": `Weapon Tube ${index + 1}`});
+          objectOutput.push({ "key": "h2", "value": `Weapon Tube ${index + 1}` });
 
           if ("type" in tubeState) {
-            objectOutput.push({"key": "Missile Type", "value": tubeState.type});
+            objectOutput.push({ "key": "Missile Type", "value": tubeState.type });
           } else {
-            objectOutput.push({"key": "Missile Type", "value": "None"});
+            objectOutput.push({ "key": "Missile Type", "value": "None" });
           }
 
           // If the tube's doing something, report it. If it's in progress, report the completion %.
           if ("state" in tubeState) {
             if ("progress" in tubeState) {
-              objectOutput.push({"key": "State", "value": `${tubeState.state} (${Math.floor(tubeState.progress * 100)}%, ${(tube.load_time - (tubeState.progress * tube.load_time)).toFixed(1)} sec.)`});
+              objectOutput.push({ "key": "State", "value": `${tubeState.state} (${Math.floor(tubeState.progress * 100)}%, ${(tube.load_time - (tubeState.progress * tube.load_time)).toFixed(1)} sec.)` });
             } else {
-              objectOutput.push({"key": "State", "value": tubeState.state});
+              objectOutput.push({ "key": "State", "value": tubeState.state });
             }
           } else {
-            objectOutput.push({"key": "State", "value": "Empty"});
+            objectOutput.push({ "key": "State", "value": "Empty" });
           }
 
-          objectOutput.push({"key": "Bearing", "value": `${Canvas.normalizeHeading(tube.direction)}°`});
-          objectOutput.push({"key": "Load time", "value": `${tube.load_time} sec.`});
+          objectOutput.push({ "key": "Bearing", "value": `${Canvas.normalizeHeading(tube.direction)}°` });
+          objectOutput.push({ "key": "Load time", "value": `${tube.load_time} sec.` });
         }
       }
     }
 
     // Display system health and status info.
     if ("systems" in selectedObject) {
-      objectOutput.push({"key": "h1", "value": "Systems"});
+      objectOutput.push({ "key": "h1", "value": "Systems" });
 
       for (const system in selectedObject.systems) {
-        objectOutput.push({"key": "h2", "value": system});
+        objectOutput.push({ "key": "h2", "value": system });
 
         if ("health" in selectedObject.systems[system]) {
-          objectOutput.push({"key": "Health", "value": `${Math.floor(selectedObject.systems[system]["health"] * 100)}%`});
+          objectOutput.push({ "key": "Health", "value": `${Math.floor(selectedObject.systems[system]["health"] * 100)}%` });
         }
 
         // We only care about heat, power, and coolant if it's a player ship.
         if (selectedObject.type === "PlayerSpaceship") {
-          objectOutput.push({"key": "Power", "value": `${Math.floor(selectedObject.systems[system]["power_level"] * 100)}% (request ${Math.floor(selectedObject.systems[system]["power_request"] * 100)}%)`});
-          objectOutput.push({"key": "Heat", "value": `${Math.floor(selectedObject.systems[system]["heat"] * 100)}%`});
-          objectOutput.push({"key": "Coolant", "value": `${Math.floor(selectedObject.systems[system]["coolant_level"] * 10)}% (request ${Math.floor(selectedObject.systems[system]["coolant_request"] * 100)}%)`});
+          objectOutput.push({ "key": "Power", "value": `${Math.floor(selectedObject.systems[system]["power_level"] * 100)}% (request ${Math.floor(selectedObject.systems[system]["power_request"] * 100)}%)` });
+          objectOutput.push({ "key": "Heat", "value": `${Math.floor(selectedObject.systems[system]["heat"] * 100)}%` });
+          objectOutput.push({ "key": "Coolant", "value": `${Math.floor(selectedObject.systems[system]["coolant_level"] * 10)}% (request ${Math.floor(selectedObject.systems[system]["coolant_request"] * 100)}%)` });
         }
       }
     }
@@ -1289,7 +1350,7 @@ class Canvas {
         // Special handling of the title row
         // row.value === `${selectedObject.callsign} (${selectedObject.faction})`
         if (index === 0) {
-          infoboxContents = infoboxContents.concat(`<tr class="ee-infobox-title ee-faction-${cssFaction}"><td colspan=2 class="ee-infobox-header">${row.value}</td>`);          
+          infoboxContents = infoboxContents.concat(`<tr class="ee-infobox-title ee-faction-${cssFaction}"><td colspan=2 class="ee-infobox-header">${row.value}</td>`);
         } else {
           infoboxContents = infoboxContents.concat(`<tr class="ee-infobox-header-${row.key}"><td colspan=2 class="ee-infobox-header">${row.value}</td>`);
         }
@@ -1304,7 +1365,7 @@ class Canvas {
   }
 
   // Move view on mouse drag.
-  _mouseMove (event) {
+  _mouseMove(event) {
     if (this._isDrawing && this._currentStrokeId) {
       const worldPos = this.screenToWorld(event.clientX, event.clientY);
       const obj = this._userObjects[this._currentStrokeId];
@@ -1325,9 +1386,51 @@ class Canvas {
     }
 
     if (this._panActive) {
-      this._view.x += (this._lastMouse.x - event.clientX) / this._zoomScale;
-      this._view.y += (this._lastMouse.y - event.clientY) / this._zoomScale;
-      this.update();
+      if (this._potentialDragId) {
+        const isDrag = this._lastMouse.x !== this._firstMouse.x || this._lastMouse.y !== this._firstMouse.y;
+        if (isDrag) {
+          if (!this._isDraggingObject) {
+            // First move of a drag
+            this._isDraggingObject = true;
+            const userObjectId = 'log_' + this._potentialDragId;
+            const existed = !!this._userObjects[userObjectId];
+            if (!this._userObjects[userObjectId]) {
+              const time = $("#time_selector").val();
+              const entry = log.getEntriesAtTime(time)[this._potentialDragId];
+              if (entry) {
+                const overrideData = {
+                  id: userObjectId,
+                  type: 'override',
+                  logId: this._potentialDragId,
+                  position: [...entry.position]
+                };
+                this._userObjects[userObjectId] = overrideData;
+              } else {
+                // Should not happen if hit detection is correct
+                this._potentialDragId = null;
+                return;
+              }
+            }
+            this._draggedObject = this._userObjects[userObjectId];
+            this._draggedObject.existedBeforeDrag = existed;
+            this._dragStartPos = [...this._draggedObject.position];
+            this._dragStartMouse = this.screenToWorld(this._firstMouse.x, this._firstMouse.y);
+          }
+
+          if (this._draggedObject) {
+            const currentWorld = this.screenToWorld(event.clientX, event.clientY);
+            const dWorldX = currentWorld.x - this._dragStartMouse.x;
+            const dWorldY = currentWorld.y - this._dragStartMouse.y;
+            this._draggedObject.position[0] = this._dragStartPos[0] + dWorldX;
+            this._draggedObject.position[1] = this._dragStartPos[1] + dWorldY;
+            this.update();
+          }
+        }
+      } else { // Panning the map
+        this._view.x += (this._lastMouse.x - event.clientX) / this._zoomScale;
+        this._view.y += (this._lastMouse.y - event.clientY) / this._zoomScale;
+        this.update();
+      }
     }
 
     // Update mouse position from event.
@@ -1336,7 +1439,7 @@ class Canvas {
   }
 
   // Zoom view when using the mouse wheel.
-  _mouseWheel (event) {
+  _mouseWheel(event) {
     // Throttle mousewheel zoom to update no more than once every 16.67ms. https://codeburst.io/throttling-and-debouncing-in-javascript-b01cad5c8edf
     if (!this._zoomThrottle) {
       this._zoomThrottle = true;
@@ -1345,8 +1448,8 @@ class Canvas {
         this._zoomThrottle = false;
       }, 16.67);
 
-      const {wheelDelta} = event.originalEvent,
-        {deltaY} = event.originalEvent;
+      const { wheelDelta } = event.originalEvent,
+        { deltaY } = event.originalEvent;
       let delta = 0.0;
 
       // Cross-browser/platform delta normalization isn't easy: https://stackoverflow.com/questions/5527601/normalizing-mousewheel-speed-across-browsers
@@ -1370,17 +1473,17 @@ class Canvas {
   }
 
   // Convert an object's unique integer ID to a color code, using components from right to left (blue to red).
-  static idToHex (id) {
+  static idToHex(id) {
     return Canvas.rgbToHex(Math.floor((id / 256) / 256), Math.floor(id / 256), id % 256);
   }
 
   // Convert a hit canvas color code to an integer object ID.
-  static rgbToId (red, green, blue) {
+  static rgbToId(red, green, blue) {
     return (red * 256 * 256) + (green * 256) + (blue);
   }
 
   // Updates the canvas.
-  update () {
+  update() {
     // Don't bother doing anything else if we don't have a log to read.
     if (!log) {
       return;
@@ -1402,7 +1505,7 @@ class Canvas {
       // Get the canvas' contexts. We'll use these throughout for drawing.
       ctx = this._canvas[0].getContext("2d"),
       ctxBg = this._backgroundCanvas[0].getContext("2d"),
-      ctxHit = this._hitCanvas.getContext("2d", {"alpha": false}),
+      ctxHit = this._hitCanvas.getContext("2d", { "alpha": false }),
       // For each entry at the given time, determine its type and draw an appropriate shape.
       entries = log.getEntriesAtTime(time),
       // Current position and zoom text bar values.
@@ -1411,8 +1514,8 @@ class Canvas {
       stateTextXPos = `X: ${this._view.x.toFixed(1)}`,
       stateTextYPos = `Y: ${this._view.y.toFixed(1)}`,
       stateTextSector = `(${Canvas.getSectorDesignation(this._view.x, this._view.y, this.sectorSize)})`;
-      // TODO: Fix out-of-range sector designations in-game.
-      // stateText = `${stateTextTime} / ${stateTextZoom} / ${stateTextX} / ${stateTextY} ${stateTextSector}`;
+    // TODO: Fix out-of-range sector designations in-game.
+    // stateText = `${stateTextTime} / ${stateTextZoom} / ${stateTextX} / ${stateTextY} ${stateTextSector}`;
 
     // Set canvas size to document size.
     this._canvas[0].width = width;
@@ -1446,11 +1549,16 @@ class Canvas {
     for (const id in entries) {
       if (Object.prototype.hasOwnProperty.call(entries, id)) {
         // Extract entry position and rotation values.
-        const entry = entries[id],
+        const entry = entries[id];
+
+        const overrideId = 'log_' + id;
+        const finalPosition = (this._userObjects[overrideId] && this._userObjects[overrideId].position) ? this._userObjects[overrideId].position : entry.position;
+
+        const
           // Lock shapes to whole pixels to avoid subpixel antialiasing as much as possible.
-          positionX = Math.floor(((entry.position[0] - this._view.x) * this._zoomScale) + (width / 2.0)),
-          positionY = Math.floor(((entry.position[1] - this._view.y) * this._zoomScale) + (height / 2.0)),
-          {rotation} = entry,
+          positionX = Math.floor(((finalPosition[0] - this._view.x) * this._zoomScale) + (width / 2.0)),
+          positionY = Math.floor(((finalPosition[1] - this._view.y) * this._zoomScale) + (height / 2.0)),
+          { rotation } = entry,
           // Define common alpha values.
           opaque = 1.0,
           halfTransparent = 0.5,
@@ -1468,115 +1576,115 @@ class Canvas {
           imageRNG = alea(`${entry.id}`);
 
         switch (entry.type) {
-        case "Zone": {
-          console.log("Zone TODO - pull shape, color from data, draw label text");
-        }
-        break;
-        case "Nebula": {
-          Canvas.drawImage(ctxBg, positionX, positionY, this._zoomScale, halfTransparent, size5U / 2, this.nebulaImages[Math.floor(imageRNG() * 3)], rotation, true);
-        }
-        break;
-        case "BlackHole": {
-          Canvas.drawImage(ctxBg, positionX, positionY, this._zoomScale, opaque, size5U / 2, this.blackHoleImage, rotation, true);
-        }
-        break;
-        case "WormHole": {
-          Canvas.drawImage(ctxBg, positionX, positionY, this._zoomScale, opaque, size5U / 2, this.wormHoleImages[Math.floor(imageRNG() * 3)], rotation, true);
-        }
-        break;
-        case "Mine": {
-          // Draw mine radius.
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#808080", mostlyTransparent, size05U);
+          case "Zone": {
+            console.log("Zone TODO - pull shape, color from data, draw label text");
+          }
+            break;
+          case "Nebula": {
+            Canvas.drawImage(ctxBg, positionX, positionY, this._zoomScale, halfTransparent, size5U / 2, this.nebulaImages[Math.floor(imageRNG() * 3)], rotation, true);
+          }
+            break;
+          case "BlackHole": {
+            Canvas.drawImage(ctxBg, positionX, positionY, this._zoomScale, opaque, size5U / 2, this.blackHoleImage, rotation, true);
+          }
+            break;
+          case "WormHole": {
+            Canvas.drawImage(ctxBg, positionX, positionY, this._zoomScale, opaque, size5U / 2, this.wormHoleImages[Math.floor(imageRNG() * 3)], rotation, true);
+          }
+            break;
+          case "Mine": {
+            // Draw mine radius.
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#808080", mostlyTransparent, size05U);
 
-          // Draw mine location.
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFFFFF", opaque, sizeMin);
-        }
-        break;
-        case "PlayerSpaceship": {
-          // Draw the ship on the foreground canvas, and its hit shape on the hit canvas.
-          this.drawShip(ctx, positionX, positionY, entry);
-          Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
-        }
-        break;
-        case "CpuShip": {
-          // Draw the ship on the foreground canvas, and its hit shape on the hit canvas.
-          this.drawShip(ctx, positionX, positionY, entry);
-          Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
-        }
-        break;
-        case "WarpJammer": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#C89664", opaque, sizeJammer);
-          Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
-        }
-        break;
-        case "SupplyDrop": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#00FFFF", opaque, sizeCollectible);
-          Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
-        }
-        break;
-        case "SpaceStation": {
-          // Draw the station on the foreground canvas, and its hit shape on the hit canvas.
-          this.drawStation(ctx, positionX, positionY, entry);
-          Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 18.0);
-        }
-        break;
-        case "Asteroid": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFC864", opaque, sizeMin);
-        }
-        break;
-        case "VisualAsteroid": {
-          Canvas.drawCircle(ctxBg, positionX, positionY, this._zoomScale, "#FFC864", mostlyTransparent, sizeMin);
-        }
-        break;
-        case "Artifact": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFFFFF", opaque, sizeCollectible);
-          Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
-        }
-        break;
-        case "Planet": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#0000AA", opaque, Math.floor(entry.planet_radius / 20));
-        }
-        break;
-        case "ScanProbe": {
-          // Draw probe scan radius.
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#60C080", nearlyTransparent, size5U);
+            // Draw mine location.
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFFFFF", opaque, sizeMin);
+          }
+            break;
+          case "PlayerSpaceship": {
+            // Draw the ship on the foreground canvas, and its hit shape on the hit canvas.
+            this.drawShip(ctx, positionX, positionY, entry);
+            Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
+          }
+            break;
+          case "CpuShip": {
+            // Draw the ship on the foreground canvas, and its hit shape on the hit canvas.
+            this.drawShip(ctx, positionX, positionY, entry);
+            Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
+          }
+            break;
+          case "WarpJammer": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#C89664", opaque, sizeJammer);
+            Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
+          }
+            break;
+          case "SupplyDrop": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#00FFFF", opaque, sizeCollectible);
+            Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
+          }
+            break;
+          case "SpaceStation": {
+            // Draw the station on the foreground canvas, and its hit shape on the hit canvas.
+            this.drawStation(ctx, positionX, positionY, entry);
+            Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 18.0);
+          }
+            break;
+          case "Asteroid": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFC864", opaque, sizeMin);
+          }
+            break;
+          case "VisualAsteroid": {
+            Canvas.drawCircle(ctxBg, positionX, positionY, this._zoomScale, "#FFC864", mostlyTransparent, sizeMin);
+          }
+            break;
+          case "Artifact": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFFFFF", opaque, sizeCollectible);
+            Canvas.drawRectangle(ctxHit, positionX, positionY, this._zoomScale, Canvas.idToHex(entry.id), 1.0, 8.0, 1.33);
+          }
+            break;
+          case "Planet": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#0000AA", opaque, Math.floor(entry.planet_radius / 20));
+          }
+            break;
+          case "ScanProbe": {
+            // Draw probe scan radius.
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#60C080", nearlyTransparent, size5U);
 
-          // Draw probe location.
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#60C080", opaque, sizeMin);
-        }
-        break;
-        case "Nuke": {
-          Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#FF4400", opaque, sizeMin, rotation);
-        }
-        break;
-        case "EMPMissile": {
-          Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#00FFFF", opaque, sizeMin, rotation);
-        }
-        break;
-        case "HomingMissile": {
-          Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#FFAA00", opaque, sizeMin, rotation);
-        }
-        break;
-        case "HVLI": {
-          Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#AAAAAA", opaque, sizeMin, rotation);
-        }
-        break;
-        case "BeamEffect": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#AA6600", halfTransparent, sizeBeamHit);
-        }
-        break;
-        case "ExplosionEffect": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFFF00", halfTransparent, sizeExplosion);
-        }
-        break;
-        case "ElectricExplosionEffect": {
-          Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#00FFFF", halfTransparent, sizeExplosion);
-        }
-        break;
-        default:
-          // If an object is an unknown type, log a debug message and display it in fuscia.
-          console.error(`Unknown object type: ${entry.type}`);
-          Canvas.drawSquare(ctx, positionX, positionY, this._zoomScale, "#FF00FF", opaque, sizeMin);
+            // Draw probe location.
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#60C080", opaque, sizeMin);
+          }
+            break;
+          case "Nuke": {
+            Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#FF4400", opaque, sizeMin, rotation);
+          }
+            break;
+          case "EMPMissile": {
+            Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#00FFFF", opaque, sizeMin, rotation);
+          }
+            break;
+          case "HomingMissile": {
+            Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#FFAA00", opaque, sizeMin, rotation);
+          }
+            break;
+          case "HVLI": {
+            Canvas.drawShapeWithRotation("delta", ctx, positionX, positionY, this._zoomScale, "#AAAAAA", opaque, sizeMin, rotation);
+          }
+            break;
+          case "BeamEffect": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#AA6600", halfTransparent, sizeBeamHit);
+          }
+            break;
+          case "ExplosionEffect": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#FFFF00", halfTransparent, sizeExplosion);
+          }
+            break;
+          case "ElectricExplosionEffect": {
+            Canvas.drawCircle(ctx, positionX, positionY, this._zoomScale, "#00FFFF", halfTransparent, sizeExplosion);
+          }
+            break;
+          default:
+            // If an object is an unknown type, log a debug message and display it in fuscia.
+            console.error(`Unknown object type: ${entry.type}`);
+            Canvas.drawSquare(ctx, positionX, positionY, this._zoomScale, "#FF00FF", opaque, sizeMin);
         }
 
         // If the object is selected, draw an indicator.
@@ -1635,12 +1743,12 @@ class Canvas {
         const isSelected = this._selectedObject && this._selectedObject.id === obj.id;
         obj.pathEl.setAttribute('stroke', isSelected ? '#FFFF00' : obj.color);
         if (obj.resizeHandle) {
-            if (isSelected) {
-                this.updateCircleElement(obj); // Recalculate handle position
-                obj.resizeHandle.style.display = 'block';
-            } else {
-                obj.resizeHandle.style.display = 'none';
-            }
+          if (isSelected) {
+            this.updateCircleElement(obj); // Recalculate handle position
+            obj.resizeHandle.style.display = 'block';
+          } else {
+            obj.resizeHandle.style.display = 'none';
+          }
         }
       }
     });
@@ -1653,13 +1761,13 @@ class Canvas {
     let charYPos = 40;
 
     for (let i in stateTextTime) {
-        ctx.fillText(stateTextTime[i], charXPos, charYPos)
+      ctx.fillText(stateTextTime[i], charXPos, charYPos)
 
-        if (stateTextTime[i] === ":") {
-            charXPos += 4;
-        } else {
-            charXPos += 8;
-        }
+      if (stateTextTime[i] === ":") {
+        charXPos += 4;
+      } else {
+        charXPos += 8;
+      }
     }
 
     charXPos += 20;
@@ -1678,7 +1786,7 @@ class Canvas {
 
   // Sectors are designated with a letter (Y axis) and number (X axis). Coordinates 0, 0 represent the intersection of
   // F and 5. Each sector is a 20U (20000) square.
-  static getSectorDesignation (positionX, positionY, sectorSize) {
+  static getSectorDesignation(positionX, positionY, sectorSize) {
     let sectorLetter = String.fromCharCode("F".charCodeAt() + Math.floor(positionY / sectorSize)),
       sectorLetterBigDigit = "",
       // Sector numbers are 0-99. Sector at 0,0 always ends in 5.
@@ -1713,7 +1821,7 @@ class Canvas {
     return `${sectorLetterBigDigit}${sectorLetter}${sectorNumber}`;
   }
 
-  static drawGridline (ctx, positionX, positionY, horizontal, lineLength, lineStroke, lineColor) {
+  static drawGridline(ctx, positionX, positionY, horizontal, lineLength, lineStroke, lineColor) {
     // Define gridline stroke width and color.
     ctx.lineWidth = lineStroke;
     ctx.strokeStyle = lineColor;
@@ -1732,14 +1840,14 @@ class Canvas {
     ctx.stroke();
   }
 
-  drawGrid (ctx, positionX, positionY, canvasWidth, canvasHeight, gridIntervalSize, gridlineColor) {
+  drawGrid(ctx, positionX, positionY, canvasWidth, canvasHeight, gridIntervalSize, gridlineColor) {
     // Translate the visible canvas into world coordinates.
     const canvasEdges = {
-        "bottom": positionY + ((canvasHeight / 2) / this._zoomScale),
-        "left": positionX - ((canvasWidth / 2) / this._zoomScale),
-        "right": positionX + ((canvasWidth / 2) / this._zoomScale),
-        "top": positionY - ((canvasHeight / 2) / this._zoomScale)
-      },
+      "bottom": positionY + ((canvasHeight / 2) / this._zoomScale),
+      "left": positionX - ((canvasWidth / 2) / this._zoomScale),
+      "right": positionX + ((canvasWidth / 2) / this._zoomScale),
+      "top": positionY - ((canvasHeight / 2) / this._zoomScale)
+    },
       // Find the first gridlines from the top left.
       gridlineHorizTop = canvasEdges.top - (canvasEdges.top % gridIntervalSize),
       gridlineVertLeft = canvasEdges.left - (canvasEdges.left % gridIntervalSize),
@@ -1802,7 +1910,7 @@ class Canvas {
   // Get a hex color code for the faction, with specified magnitude for the color mix.
   // Would be nice to use the GM colors directly from factioninfo.lua.
   // Returns a long hex color string (ie. #FF0000).
-  static getFactionColor (faction, lowColorMagnitude, highColorMagnitude) {
+  static getFactionColor(faction, lowColorMagnitude, highColorMagnitude) {
     // Faction colors from factionInfo.lua and custom additions.
     // The magnitude parameters are kept for compatibility but are no longer used.
     switch (faction) {
@@ -1848,7 +1956,7 @@ class Canvas {
   }
 
   // Return an effective minimum size for the square, unless its size modifier is huge.
-  static calculateMinimumSize (sizeMultiplier, zoomScale, sizeModifier) {
+  static calculateMinimumSize(sizeMultiplier, zoomScale, sizeModifier) {
     const hugeSizeModifier = 50;
 
     if (sizeModifier < hugeSizeModifier) {
@@ -1859,7 +1967,7 @@ class Canvas {
   }
 
   // Draw a square that scales with the zoom level.
-  static drawRectangle (ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier, ratio = 1.0) {
+  static drawRectangle(ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier, ratio = 1.0) {
     // Set an effective minimum size for the shape.
     const squareSize = Canvas.calculateMinimumSize(sizeModifier * 33.3, zoomScale, sizeModifier);
 
@@ -1875,13 +1983,13 @@ class Canvas {
   }
 
   // Draw a square that scales with the zoom level.
-  static drawSquare (ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
+  static drawSquare(ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
     // Deprecate for drawRectangle with a 1.0 ratio.
     Canvas.drawRectangle(ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier);
   }
 
   // Draw a triangle that scales with the zoom level.
-  static drawTriangle (ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
+  static drawTriangle(ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
     // Set an effective minimum size for the shape.
     const triangleSize = Canvas.calculateMinimumSize(sizeModifier * 33.3, zoomScale, sizeModifier);
 
@@ -1901,7 +2009,7 @@ class Canvas {
   }
 
   // Draw a delta (notched triangular icon) that scales with the zoom level.
-  static drawDelta (ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
+  static drawDelta(ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
     // Set an effective minimum size for the shape.
     const deltaSize = Canvas.calculateMinimumSize(sizeModifier * 33.3, zoomScale, sizeModifier);
 
@@ -1922,7 +2030,7 @@ class Canvas {
   }
 
   // Draw a hexagon that scales with the zoom level.
-  static drawHex (ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
+  static drawHex(ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier) {
     // Set an effective minimum size for the shape.
     const hexSize = Canvas.calculateMinimumSize(sizeModifier * 33.3, zoomScale, sizeModifier) / 2;
 
@@ -1943,7 +2051,7 @@ class Canvas {
   }
 
   // Draw a circle that scales with the zoom level.
-  static drawCircle (ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier, drawStroke = false, strokeColor = "#FF00FF", strokeSize = 5, strokeAlpha = 1.0) {
+  static drawCircle(ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier, drawStroke = false, strokeColor = "#FF00FF", strokeSize = 5, strokeAlpha = 1.0) {
     // Set an effective minimum size for the shape.
     const circleSize = Canvas.calculateMinimumSize(sizeModifier * 33.3, zoomScale, sizeModifier / 2);
 
@@ -1969,7 +2077,7 @@ class Canvas {
   }
 
   // Convert hex string value to RGB.
-  static hexToRgb (hex) {
+  static hexToRgb(hex) {
     const hexStringLength = hex.length;
     let conversion = {},
       codeIsShort = false,
@@ -2021,7 +2129,7 @@ class Canvas {
   }
 
   // Convert an integer color code component to a hex value.
-  static componentToHex (component) {
+  static componentToHex(component) {
     const hex = component.toString(16);
 
     // If the component is a single-digit integer, its hex value needs a leading zero.
@@ -2033,12 +2141,12 @@ class Canvas {
   }
 
   // Convert a RGB color code to a long hex color code.
-  static rgbToHex (red, green, blue) {
+  static rgbToHex(red, green, blue) {
     return `#${Canvas.componentToHex(red)}${Canvas.componentToHex(green)}${Canvas.componentToHex(blue)}`.toUpperCase();
   }
 
   // Draw an image that scales with the zoom level.
-  static drawImage (ctx, positionX, positionY, zoomScale, fillAlpha, sizeModifier, image, rotation = 0.0, useScreen = false) {
+  static drawImage(ctx, positionX, positionY, zoomScale, fillAlpha, sizeModifier, image, rotation = 0.0, useScreen = false) {
     // Convert degrees to radians.
     const radians = Canvas.degreesToRadians(rotation),
       // Set an effective minimum size for the shape.
@@ -2047,7 +2155,7 @@ class Canvas {
         "x": positionX - (imageSize / 2),
         "y": positionY - (imageSize / 2)
       };
-      // fillColorRGB = Canvas.hexToRgb(fillColor);
+    // fillColorRGB = Canvas.hexToRgb(fillColor);
 
     // Save the canvas context state.
     ctx.save();
@@ -2095,7 +2203,7 @@ class Canvas {
   }
 
   // Draw the object's callsign.
-  static drawCallsign (ctx, positionX, positionY, zoomScale, entry, fontSize, lowColor, highColor, textDrift) {
+  static drawCallsign(ctx, positionX, positionY, zoomScale, entry, fontSize, lowColor, highColor, textDrift) {
     // Callsign should be off center and to the side of the object.
     const textDriftAmount = Math.max((textDrift * 66.666) * zoomScale, textDrift);
     let callsignText = entry.callsign;
@@ -2128,19 +2236,19 @@ class Canvas {
       factionColor = overrideFillColor;
 
     switch (entry.station_type) {
-    case "Huge Station":
-      sizeModifier = 27;
-      break;
-    case "Large Station":
-      sizeModifier = 21;
-      break;
-    case "Medium Station":
-      sizeModifier = 17;
-      break;
-    case "Small Station":
-      sizeModifier = 12;
-      break;
-    default:
+      case "Huge Station":
+        sizeModifier = 27;
+        break;
+      case "Large Station":
+        sizeModifier = 21;
+        break;
+      case "Medium Station":
+        sizeModifier = 17;
+        break;
+      case "Small Station":
+        sizeModifier = 12;
+        break;
+      default:
     }
 
     // Get the station's faction color, unless we're overriding the fill color.
@@ -2258,12 +2366,12 @@ class Canvas {
   }
 
   // Convert degrees to radians. Used for canvas rotation.
-  static degreesToRadians (degrees) {
+  static degreesToRadians(degrees) {
     return degrees * Math.PI / 180;
   }
 
   // Rotate a given shape before drawing it.
-  static drawShapeWithRotation (shape, ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier, rotation = 0.0) {
+  static drawShapeWithRotation(shape, ctx, positionX, positionY, zoomScale, fillColor, fillAlpha, sizeModifier, rotation = 0.0) {
     // Convert degrees to radians.
     const radians = Canvas.degreesToRadians(rotation);
 
@@ -2278,20 +2386,20 @@ class Canvas {
 
     // Draw the given shape, or log that this method doesn't support it.
     switch (shape) {
-    case "square":
-      Canvas.drawSquare(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
-      break;
-    case "circle":
-      Canvas.drawCircle(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
-      break;
-    case "delta":
-      Canvas.drawDelta(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
-      break;
-    case "triangle":
-      Canvas.drawTriangle(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
-      break;
-    default:
-      console.error(`Shape ${shape} not supported.`);
+      case "square":
+        Canvas.drawSquare(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
+        break;
+      case "circle":
+        Canvas.drawCircle(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
+        break;
+      case "delta":
+        Canvas.drawDelta(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
+        break;
+      case "triangle":
+        Canvas.drawTriangle(ctx, 0, 0, zoomScale, fillColor, fillAlpha, sizeModifier);
+        break;
+      default:
+        console.error(`Shape ${shape} not supported.`);
     }
 
     // Restore the saved context state.
